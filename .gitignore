@@ -115,4 +115,10 @@ dmypy.json
 
 *.DS_Store
 *.interp
-
+.idea/*
+parser/*.class
+parser/*.java
+*.ll
+*.bc
+*.out
+reference/*

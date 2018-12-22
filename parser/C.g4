@@ -491,10 +491,16 @@ selectionStatement
     |   'switch' '(' expression ')' statement
     ;
 
+//iterationStatement
+//    :   While '(' expression ')' statement
+//    |   Do statement While '(' expression ')' ';'
+//    |   For '(' forCondition ')' statement
+//    ;
 iterationStatement
-    :   While '(' expression ')' statement
-    |   Do statement While '(' expression ')' ';'
-    |   For '(' forCondition ')' statement
+    :   'while' '(' expression ')' statement
+    |   'do' statement 'while' '(' expression ')' ';'
+    |   'for' '(' expression? ';' expression? ';' expression? ')' statement
+    |   'for' '(' declaration expression? ';' expression? ')' statement
     ;
 
 //    |   'for' '(' expression? ';' expression?  ';' forUpdate? ')' statement
@@ -895,7 +901,12 @@ ComplexDefine
     :   '#' Whitespace? 'define'  ~[#]*
         -> skip
     ;
-         
+
+Include
+    :   '#include' Whitespace* ~[\r\n]*
+        -> skip
+    ;
+
 // ignore the following asm blocks:
 /*
     asm
