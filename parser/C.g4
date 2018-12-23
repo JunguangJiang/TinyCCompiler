@@ -491,16 +491,10 @@ selectionStatement
     |   'switch' '(' expression ')' statement
     ;
 
-//iterationStatement
-//    :   While '(' expression ')' statement
-//    |   Do statement While '(' expression ')' ';'
-//    |   For '(' forCondition ')' statement
-//    ;
 iterationStatement
-    :   'while' '(' expression ')' statement
-    |   'do' statement 'while' '(' expression ')' ';'
-    |   'for' '(' expression? ';' expression? ';' expression? ')' statement
-    |   'for' '(' declaration expression? ';' expression? ')' statement
+    :   While '(' expression ')' statement
+    |   Do statement While '(' expression ')' ';'
+    |   For '(' forCondition ')' statement
     ;
 
 //    |   'for' '(' expression? ';' expression?  ';' forUpdate? ')' statement

@@ -35,7 +35,7 @@ class LLVMTypes(object):
     def get_pointer_type(pointee_type):
         """
         获得指针类型
-        :param pointee_type: 指向元素的类型
+        :param pointee_type: 指向的元素的类型
         :return:
         """
         return ir.PointerType(pointee=pointee_type)
@@ -69,12 +69,12 @@ class LLVMTypes(object):
             print("get_const_from_str doesn't support const_value which is a ", type(const_value))
 
     @classmethod
-    def _is_int(cls, type):
+    def is_int(cls, type):
         """判断某个类型是否为整数类型"""
         return type in [cls.int, cls.short]
 
     @classmethod
-    def _is_float(cls, type):
+    def is_float(cls, type):
         """判断某个类型是否为浮点数类型"""
         return type in [cls.float, cls.double]
 
@@ -89,21 +89,21 @@ class LLVMTypes(object):
         """
         if value.type == target_type:  #如果转换前后类型相同，
             return value  #则不转换，直接返回
-        elif cls._is_int(value.type) and target_type == cls.bool:  #整数转化为布尔值
+        elif cls.is_int(value.type) and target_type == cls.bool:  #整数转化为布尔值
             return builder.icmp_unsigned('!=', value, cls.bool(0))
-        elif cls._is_int(value.type) and cls._is_int(target_type):  #整数转化为整数
+        elif cls.is_int(value.type) and cls.is_int(target_type):  #整数转化为整数
             if value.type.width < target_type.width:  #扩展整数位数
                 return builder.sext(value, target_type)
             else:  #减少整数位数
                 return builder.trunc(value, target_type)
-        elif cls._is_float(value.type) and cls._is_float(target_type):  #浮点数转换为浮点数
+        elif cls.is_float(value.type) and cls.is_float(target_type):  #浮点数转换为浮点数
             if value.type == cls.float:  #增加浮点数精度
                 return builder.fpext(value, target_type)
             else:  #降低浮点数精度
                 return builder.fptrunc(value, target_type)
-        elif cls._is_float(value.type) and cls._is_int(target_type):  #浮点数转整数
+        elif cls.is_float(value.type) and cls.is_int(target_type):  #浮点数转整数
             return builder.fptosi(value, target_type)
-        elif cls._is_int(value.type) and cls._is_float(target_type):  #整数转浮点数
+        elif cls.is_int(value.type) and cls.is_float(target_type):  #整数转浮点数
             return builder.sitofp(value, target_type)
         #TODO 下面的代码还没有想清楚
         elif type(value.type) == ir.ArrayType and type(target_type) == ir.PointerType \
