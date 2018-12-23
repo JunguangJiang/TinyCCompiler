@@ -3,10 +3,11 @@ from parser.CParser import CParser
 import llvmlite.ir as ir
 from generator.types import LLVMTypes
 from generator.util import parse_escape
+from generator.errors import *
 
 
 class LLVMGenerator(CVisitor):
-    def __init__(self):
+    def __init__(self, error_listener=TinyCErrorListener()):
         self.module = ir.Module()
         self.local_vars = {}
         self.continue_block = None
@@ -14,6 +15,7 @@ class LLVMGenerator(CVisitor):
         self.emit_printf()
         self.current_base_type = None  #当前上下文的基础数据类型
         self.is_global = True  #当前是否处于全局环境中
+        self.error_listener = error_listener  #错误监听器
 
     @staticmethod
     def match_rule(ctx, rule):
@@ -284,8 +286,7 @@ class LLVMGenerator(CVisitor):
             return res, lhs_ptr
         else:
             # TODO
-            print("Error: visitUnaryExpression not finished yet.")
-            exit(-1)
+            raise NotImplementedError("visitUnaryExpression not finished yet.")
 
     def visitCastExpression(self, ctx:CParser.CastExpressionContext):
         """
@@ -345,8 +346,7 @@ class LLVMGenerator(CVisitor):
         else:
             # TODO
             pass
-        print("Error: visitPostfixExpression not finished yet.")
-        exit(-1)
+        raise NotImplementedError("visitPostfixExpression not finished yet")
 
     def visitPrimaryExpression(self, ctx:CParser.PrimaryExpressionContext):
         """
@@ -375,9 +375,7 @@ class LLVMGenerator(CVisitor):
                             var_val = self.builder.load(var)
                     return var_val, var
                 else:
-                    # TODO raise exception
-                    print(self.module.functions)
-                    print("Undefined identifier: '%s'\n" % text)
+                    raise SemanticError(ctx=ctx, msg="undefined identifier "+text)
             elif ctx.StringLiteral():
                 str_len = len(parse_escape(text[1:-1]))
                 return LLVMTypes.get_const_from_str(LLVMTypes.get_array_type(LLVMTypes.char, str_len+1), text), None
@@ -428,8 +426,7 @@ class LLVMGenerator(CVisitor):
             self.builder.branch(self.break_block)
         else:
             # TODO 尚未支持goto语句
-            print("visitJumpStatement not finished yet.")
-            exit(-1)
+            raise NotImplementedError("goto not finished")
 
     def visitMultiplicativeExpression(self, ctx:CParser.MultiplicativeExpressionContext):
         """
@@ -463,12 +460,9 @@ class LLVMGenerator(CVisitor):
                 elif op == '/':
                     return self.builder.fdiv(lhs, converted_rhs)
                 else:
-                    # TODO raise exception
-                    print("浮点数不支持%运算!")
-                    exit(-1)
+                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
             else:
-                # TODO raise exception
-                print("Error: 未知的运算", lhs, op, rhs)
+                raise SemanticError(ctx=ctx, msg="Illegal operation: "+str(lhs)+op+str(rhs))
 
     def visitInitDeclarator(self, ctx:CParser.InitDeclaratorContext):
         """
@@ -624,6 +618,62 @@ class LLVMGenerator(CVisitor):
             # TODO
             print("switch not finished yet.")
             exit(-1)
+
+    # def visitAdditiveExpression(self, ctx:CParser.AdditiveExpressionContext):
+    #     """
+    #     additiveExpression
+    #         :   multiplicativeExpression
+    #         |   additiveExpression '+' multiplicativeExpression
+    #         |   additiveExpression '-' multiplicativeExpression
+    #         ;
+    #     :param ctx:
+    #     :return:
+    #     """
+    #     pass
+
+    def visitRelationalExpression(self, ctx:CParser.RelationalExpressionContext):
+        """
+        relationalExpression
+            :   shiftExpression
+            |   relationalExpression '<' shiftExpression
+            |   relationalExpression '>' shiftExpression
+            |   relationalExpression '<=' shiftExpression
+            |   relationalExpression '>=' shiftExpression
+            ;
+        :param ctx:
+        :return:
+        """
+        rhs = self.visit(ctx.shiftExpression())
+        if len(ctx.children) == 1:
+            return rhs
+        else:
+            lhs = self.visit(ctx.relationalExpression())
+            op = ctx.children[1].getText()
+            converted_target = lhs.type
+            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=converted_target)
+            if LLVMTypes.is_int(converted_target):
+                return self.builder.icmp_signed(cmpop=op, lhs=lhs, rhs=converted_rhs)
+            elif LLVMTypes.is_float(converted_target):
+                return self.builder.fcmp_ordered(cmpop=op, lhs=lhs, rhs=converted_rhs)
+            else:
+                raise SemanticError(ctx=ctx, msg="Unknown relation expression: "+str(lhs)+str(op)+str(rhs))
+
+    def visitStatement(self, ctx:CParser.StatementContext):
+        """
+        statement
+            :   labeledStatement
+            |   compoundStatement
+            |   expressionStatement
+            |   selectionStatement
+            |   iterationStatement
+            |   jumpStatement
+        :param ctx:
+        :return:
+        """
+        try:
+            self.visit(ctx.children[0])
+        except SemanticError as e:
+            self.error_listener.register_semantic_error(e)
 
     def save(self, filename):
         """保存到文件"""

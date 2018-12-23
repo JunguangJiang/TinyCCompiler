@@ -2,12 +2,6 @@ import llvmlite.binding as llvm
 import sys
 from ctypes import CFUNCTYPE, c_int
 
-# All these initializations are required for code generation!
-llvm.initialize()
-llvm.initialize_native_target()
-llvm.initialize_native_asmprinter()  # yes, even this one
-
-
 def create_execution_engine():
     """
     Create an ExecutionEngine suitable for JIT code generation on
@@ -37,12 +31,17 @@ def compile_ir(engine, llvm_ir):
     return mod
 
 
-if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print("IR filename required. Usage: python executor.py IR_filename")
-        exit(-1)
-
-    with open(sys.argv[1]) as f:
+def execute(ir_filename):
+    """
+    执行ir代码
+    :param ir_filename:文件名
+    :return:
+    """
+    # All these initializations are required for code generation!
+    llvm.initialize()
+    llvm.initialize_native_target()
+    llvm.initialize_native_asmprinter()  # yes, even this one
+    with open(ir_filename) as f:
         llvm_ir = f.read()
         engine = create_execution_engine()
         mod = compile_ir(engine, llvm_ir)
@@ -50,4 +49,14 @@ if __name__ == '__main__':
         main_type = CFUNCTYPE(c_int)
         main_func = main_type(engine.get_function_address("main"))
         ret = main_func()
+        return ret
+
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print("IR filename required. Usage: python executor.py IR_filename")
+        exit(-1)
+
+    ret = execute(sys.argv[1])
+    if ret is not None:
         print("Program exits with code ", ret)
