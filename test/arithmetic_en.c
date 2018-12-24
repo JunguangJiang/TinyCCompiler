@@ -127,7 +127,6 @@ void evaluateTests()
 	testEvaluate("1+(5-2)*4/(2+1)", 5);
 	testEvaluate("0+(1+23)/4*5*67-8+9", 2011);
 	testEvaluate("192/(3*8+4*(33/5))-5", -1);
-	printf("\n");
 }
 
 int main()

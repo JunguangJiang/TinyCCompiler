@@ -47,7 +47,6 @@ void palindromeTests()
     testPalindrome("234566432", 0);
     testPalindrome("3344", 0);
     testPalindrome("234", 0);
-    printf("\n");
 }
 
 int main()

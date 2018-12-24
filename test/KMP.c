@@ -1,4 +1,4 @@
-//KMP算法测试程序
+//KMP TEST
 #include <string.h>
 #include <stdio.h>
 

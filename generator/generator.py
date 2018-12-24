@@ -1,5 +1,7 @@
 from parser.CVisitor import CVisitor
+from parser.CLexer import CLexer
 from parser.CParser import CParser
+from antlr4 import *
 import llvmlite.ir as ir
 from generator.types import LLVMTypes
 from generator.util import parse_escape
@@ -821,7 +823,32 @@ class LLVMGenerator(CVisitor):
             f.write(repr(self.module))
 
 
+def generate(input_filename, output_filename):
+    """
+    将C代码文件转成IR代码文件
+    :param input_filename: C代码文件
+    :param output_filename: IR代码文件
+    :return: 生成是否成功
+    """
+    lexer = CLexer(FileStream(input_filename))
+    stream = CommonTokenStream(lexer)
+    parser = CParser(stream)
 
+    error_listener = TinyCErrorListener()
+    parser.removeErrorListeners()
+    parser.addErrorListener(error_listener)
+
+    tree = parser.compilationUnit()
+
+    generator = LLVMGenerator(error_listener)
+    generator.visit(tree)
+    generator.save(output_filename)
+
+    if len(error_listener.errors) == 0:
+        return True
+    else:
+        error_listener.print_errors()
+        return False
 
 
 
