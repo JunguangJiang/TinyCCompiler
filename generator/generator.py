@@ -2,7 +2,7 @@ from parser.CVisitor import CVisitor
 from parser.CParser import CParser
 import llvmlite.ir as ir
 from generator.types import LLVMTypes
-from generator.util import parse_escape
+from generator.util import parse_escape, flat_list
 from generator.errors import *
 
 
@@ -214,13 +214,11 @@ class LLVMGenerator(CVisitor):
             rhs = self.visit(ctx.assignmentExpression())
             # TODO 根据不同的op进行运算
             if op == '=':
-                # 此处存疑 ？
                 converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=lhs_ptr.type.pointee, ctx=ctx)
                 self.builder.store(converted_rhs, lhs_ptr)
                 return converted_rhs
             else:
-                print("Error: visitAssignmentExpression not finished yet")
-                exit(-1)
+                raise NotImplementedError("visitAssignmentExpression")
 
     def visitAssignmentOperator(self, ctx:CParser.AssignmentOperatorContext):
         """
@@ -331,7 +329,9 @@ class LLVMGenerator(CVisitor):
             op = ctx.children[1].getText()
             if op == '[':  # postfixExpression '[' expression ']'
                 array_index = self.visit(ctx.expression())
-                ptr = self.builder.gep(lhs, [array_index])
+                array_index = LLVMTypes.cast_type(self.builder, target_type=LLVMTypes.int, value=array_index, ctx=ctx)
+                zero = ir.Constant(LLVMTypes.int, 0)
+                ptr = self.builder.gep(lhs_ptr, [zero, array_index])
                 return self.builder.load(ptr), ptr
             elif op == '(':  # postfixExpression '(' argumentExpressionList? ')'
                 if len(ctx.children) == 4:
@@ -486,10 +486,12 @@ class LLVMGenerator(CVisitor):
         var_name, var_type = self.visit(ctx.declarator())
         if len(ctx.children) == 3:
             init_val = self.visit(ctx.initializer())
-            # TODO 针对initializer的各种情况进行讨论: 可能是一个值，也可能是一个列表
-            if isinstance(var_type, ir.PointerType) and isinstance(init_val.type, ir.ArrayType) and var_type.pointee == init_val.type.element:
-                var_type = init_val.type  #这个处理有必要吗？
-            converted_val = LLVMTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
+            if isinstance(init_val, list):  # 如果初始值是一个列表
+                converted_val = ir.Constant(var_type, init_val)
+            else:
+                if isinstance(var_type, ir.PointerType) and isinstance(init_val.type, ir.ArrayType) and var_type.pointee == init_val.type.element:
+                    var_type = init_val.type  #这个处理有必要吗？
+                converted_val = LLVMTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
 
         if self.is_global:
             self.local_vars[var_name] = ir.GlobalVariable(self.module, var_type, name=var_name)
@@ -500,6 +502,37 @@ class LLVMGenerator(CVisitor):
             self.local_vars[var_name] = self.builder.alloca(var_type)
             if len(ctx.children) == 3:
                 self.builder.store(converted_val, self.local_vars[var_name])
+
+    def visitInitializer(self, ctx:CParser.InitializerContext):
+        """
+        initializer
+            :   assignmentExpression
+            |   '{' initializerList '}'
+            |   '{' initializerList ',' '}'
+            ;
+        :param ctx:
+        :return:
+        """
+        if len(ctx.children) == 1:
+            return self.visit(ctx.assignmentExpression())
+        else:
+            return self.visit(ctx.initializerList())
+
+    def visitInitializerList(self, ctx:CParser.InitializerListContext):
+        """
+        initializerList
+            :   initializer
+            |   initializerList ',' initializer
+            ;
+        :param ctx:
+        :return: 初始化值的列表
+        """
+        if len(ctx.children) == 1:
+            init_list = []
+        else:
+            init_list = self.visit(ctx.initializerList())
+        init_list.append(self.visit(ctx.initializer()))
+        return init_list
 
     def visitIterationStatement(self, ctx:CParser.IterationStatementContext):
         """
@@ -625,6 +658,7 @@ class LLVMGenerator(CVisitor):
                     self.visit(statements[0])
         else:
             # TODO
+            print(ctx.children[0].getText())
             raise NotImplementedError("switch not finishe yet")
 
     def visitAdditiveExpression(self, ctx:CParser.AdditiveExpressionContext):
