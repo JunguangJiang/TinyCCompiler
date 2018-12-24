@@ -1,5 +1,6 @@
 import llvmlite.ir as ir
 from generator.util import parse_escape
+from generator.errors import SemanticError
 
 
 class LLVMTypes(object):
@@ -41,7 +42,7 @@ class LLVMTypes(object):
         return ir.PointerType(pointee=pointee_type)
 
     @classmethod
-    def get_const_from_str(cls, llvm_type, const_value):
+    def get_const_from_str(cls, llvm_type, const_value, ctx):
         """
         从字符串获得常数类型
         :param llvm_type: 类型,接受char,float,double,short,int,ir.ArrayType
@@ -64,9 +65,9 @@ class LLVMTypes(object):
                 return ir.Constant(llvm_type, bytearray(str_val, 'ascii'))
             else:
                 # TODO
-                print("No known conversion: '%s' to '%s'\n" % (const_value, llvm_type))
+                raise SemanticError(msg="No known conversion: '%s' to '%s'" % (const_value, llvm_type))
         else:
-            print("get_const_from_str doesn't support const_value which is a ", type(const_value))
+            raise SyntaxError(ctx=ctx, msg="get_const_from_str doesn't support const_value which is a " + str(type(const_value)))
 
     @classmethod
     def is_int(cls, type):
@@ -79,7 +80,7 @@ class LLVMTypes(object):
         return type in [cls.float, cls.double]
 
     @classmethod
-    def cast_type(cls, builder, target_type, value):
+    def cast_type(cls, builder, target_type, value, ctx):
         """
         强制类型转换
         :param builder:
@@ -105,7 +106,6 @@ class LLVMTypes(object):
             return builder.fptosi(value, target_type)
         elif cls.is_int(value.type) and cls.is_float(target_type):  #整数转浮点数
             return builder.sitofp(value, target_type)
-        #TODO 下面的代码还没有想清楚
         elif type(value.type) == ir.ArrayType and type(target_type) == ir.PointerType \
                 and value.type.element == target_type.pointee:  #数组类型转成指针类型
             zero = ir.Constant(cls.int, 0)
@@ -116,6 +116,5 @@ class LLVMTypes(object):
                 and value.type.element == target_type.element:
             return builder.bitcast(value, target_type)
         else:
-            print("No known conversion from '%s' to '%s'\n" % (value.type, target_type))
-
+            raise SemanticError(ctx=ctx, msg="No known conversion from '%s' to '%s'" % (value.type, target_type))
 

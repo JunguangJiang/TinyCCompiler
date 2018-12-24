@@ -3,10 +3,14 @@ from antlr4.error.ErrorListener import ErrorListener
 
 class SemanticError(Exception):
     """语义错误基类"""
-    def __init__(self, ctx, msg):
+    def __init__(self, msg, ctx=None):
         super().__init__()
-        self.line = ctx.start.line
-        self.column = ctx.start.column
+        if ctx:
+            self.line = ctx.start.line  #错误出现位置
+            self.column = ctx.start.column
+        else:
+            self.line = 0
+            self.column = 0
         self.msg = msg
 
     def __str__(self):

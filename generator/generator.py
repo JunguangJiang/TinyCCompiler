@@ -107,8 +107,7 @@ class LLVMGenerator(CVisitor):
             # void | char | short | int | long | float | double |
             return LLVMTypes.str2type[ctx.getText()]
         else:
-            print("Error: unknown type ", ctx.getText())
-            exit(-1)
+            raise SemanticError(ctx=ctx, msg="Unknown type "+ctx.getText())
 
     def visitParameterList(self, ctx:CParser.ParameterListContext):
         """
@@ -215,7 +214,7 @@ class LLVMGenerator(CVisitor):
             # TODO 根据不同的op进行运算
             if op == '=':
                 # 此处存疑 ？
-                converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=lhs_ptr.type.pointee)
+                converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=lhs_ptr.type.pointee, ctx=ctx)
                 self.builder.store(converted_rhs, lhs_ptr)
                 return converted_rhs
             else:
@@ -256,8 +255,8 @@ class LLVMGenerator(CVisitor):
             return rhs
         else:  # logicalOrExpression '||' logicalAndExpression
             lhs = self.visit(ctx.logicalOrExpression())
-            converted_lhs = LLVMTypes.cast_type(self.builder, value=lhs, target_type=LLVMTypes.bool)
-            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=LLVMTypes.bool)
+            converted_lhs = LLVMTypes.cast_type(self.builder, value=lhs, target_type=LLVMTypes.bool, ctx=ctx)
+            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=LLVMTypes.bool, ctx=ctx)
             return self.builder.or_(converted_lhs, converted_rhs)
 
     def visitUnaryExpression(self, ctx:CParser.UnaryExpressionContext):
@@ -338,7 +337,7 @@ class LLVMGenerator(CVisitor):
                     args = self.visit(ctx.argumentExpressionList())
                 else:
                     args = []
-                converted_args = [LLVMTypes.cast_type(self.builder, value=arg, target_type=callee_arg.type)
+                converted_args = [LLVMTypes.cast_type(self.builder, value=arg, target_type=callee_arg.type, ctx=ctx)
                                   for arg, callee_arg in zip(args, lhs.args)]
                 if len(converted_args) < len(args):  # 考虑变长参数
                     converted_args += args[len(lhs.args):]
@@ -378,10 +377,13 @@ class LLVMGenerator(CVisitor):
                     raise SemanticError(ctx=ctx, msg="undefined identifier "+text)
             elif ctx.StringLiteral():
                 str_len = len(parse_escape(text[1:-1]))
-                return LLVMTypes.get_const_from_str(LLVMTypes.get_array_type(LLVMTypes.char, str_len+1), text), None
+                return LLVMTypes.get_const_from_str(LLVMTypes.get_array_type(LLVMTypes.char, str_len+1), text, ctx=ctx), None
             else:
-                # TODO 目前只接受整数
-                const_value = LLVMTypes.get_const_from_str(LLVMTypes.int, text)
+                # TODO 目前只接受整数,需要根据text的特点，确定其为浮点数还是整数
+                if '.' in text:  # 目前的策略比较简单，只是根据有没有小数点来判断
+                    const_value = LLVMTypes.get_const_from_str(LLVMTypes.double, text, ctx=ctx)
+                else:
+                    const_value = LLVMTypes.get_const_from_str(LLVMTypes.int, text, ctx=ctx)
                 return const_value, None
 
     def visitArgumentExpressionList(self, ctx:CParser.ArgumentExpressionListContext):
@@ -416,7 +418,7 @@ class LLVMGenerator(CVisitor):
             if len(ctx.children) == 3:
                 ret_val = self.visit(ctx.expression())
                 converted_val = LLVMTypes.cast_type(
-                    self.builder, target_type=self.builder.function.type.pointee.return_type, value=ret_val)
+                    self.builder, target_type=self.builder.function.type.pointee.return_type, value=ret_val, ctx=ctx)
                 self.builder.ret(converted_val)
             else:
                 self.builder.ret_void()
@@ -426,7 +428,7 @@ class LLVMGenerator(CVisitor):
             self.builder.branch(self.break_block)
         else:
             # TODO 尚未支持goto语句
-            raise NotImplementedError("goto not finished")
+            raise NotImplementedError("goto")
 
     def visitMultiplicativeExpression(self, ctx:CParser.MultiplicativeExpressionContext):
         """
@@ -443,9 +445,9 @@ class LLVMGenerator(CVisitor):
         if self.match_rule(ctx.children[0], CParser.RULE_castExpression):
             return rhs
         else:
-            lhs, lhs_ptr = self.visit(ctx.multiplicativeExpression())
+            lhs = self.visit(ctx.multiplicativeExpression())
             converted_target = lhs.type
-            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=converted_target)  # 将rhs转成lhs的类型
+            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)  # 将rhs转成lhs的类型
             op = ctx.children[1].getText()
             if LLVMTypes.is_int(converted_target): # 整数运算
                 if op == '*':
@@ -479,7 +481,7 @@ class LLVMGenerator(CVisitor):
             # TODO 针对initializer的各种情况进行讨论: 可能是一个值，也可能是一个列表
             if isinstance(var_type, ir.PointerType) and isinstance(init_val.type, ir.ArrayType) and var_type.pointee == init_val.type.element:
                 var_type = init_val.type  #这个处理有必要吗？
-            converted_val = LLVMTypes.cast_type(self.builder, value=init_val, target_type=var_type)
+            converted_val = LLVMTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
 
         if self.is_global:
             self.local_vars[var_name] = ir.GlobalVariable(self.module, var_type, name=var_name)
@@ -520,14 +522,13 @@ class LLVMGenerator(CVisitor):
         elif iteration_type == "for":  # for循环
             cond_expression, update_expression = self.visit(ctx.forCondition())
         else:  # do-while循环
-            print("do while not finished yet.")
-            exit(-1)
+            raise NotImplementedError("do while")
 
         self.builder.branch(cond_block)
         self.builder.position_at_start(cond_block)
         if cond_expression:
             cond_val = self.visit(cond_expression)
-            converted_cond_val = LLVMTypes.cast_type(self.builder, target_type=LLVMTypes.bool, value=cond_val)
+            converted_cond_val = LLVMTypes.cast_type(self.builder, target_type=LLVMTypes.bool, value=cond_val, ctx=ctx)
             self.builder.cbranch(converted_cond_val, loop_block, end_block)
         else:
             self.builder.branch(loop_block)
@@ -603,7 +604,7 @@ class LLVMGenerator(CVisitor):
         """
         if ctx.children[0].getText() == 'if':
             cond_val = self.visit(ctx.expression())
-            converted_cond_val = LLVMTypes.cast_type(self.builder, target_type=LLVMTypes.bool, value=cond_val)
+            converted_cond_val = LLVMTypes.cast_type(self.builder, target_type=LLVMTypes.bool, value=cond_val, ctx=ctx)
             statements = ctx.statement()
             if len(statements) == 2:  # 存在else分支
                 with self.builder.if_else(converted_cond_val) as (then, otherwise):
@@ -616,20 +617,38 @@ class LLVMGenerator(CVisitor):
                     self.visit(statements[0])
         else:
             # TODO
-            print("switch not finished yet.")
-            exit(-1)
+            raise NotImplementedError("switch not finishe yet")
 
-    # def visitAdditiveExpression(self, ctx:CParser.AdditiveExpressionContext):
-    #     """
-    #     additiveExpression
-    #         :   multiplicativeExpression
-    #         |   additiveExpression '+' multiplicativeExpression
-    #         |   additiveExpression '-' multiplicativeExpression
-    #         ;
-    #     :param ctx:
-    #     :return:
-    #     """
-    #     pass
+    def visitAdditiveExpression(self, ctx:CParser.AdditiveExpressionContext):
+        """
+        additiveExpression
+            :   multiplicativeExpression
+            |   additiveExpression '+' multiplicativeExpression
+            |   additiveExpression '-' multiplicativeExpression
+            ;
+        :param ctx:
+        :return:
+        """
+        rhs = self.visit(ctx.multiplicativeExpression())
+        if len(ctx.children) == 1:  # multiplicativeExpression
+            return rhs
+        else:
+            lhs = self.visit(ctx.additiveExpression())
+            op = ctx.children[1].getText()
+            convert_target = lhs.type
+            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=convert_target, ctx=ctx)
+            if LLVMTypes.is_int(convert_target):
+                if op == '+':
+                    return self.builder.add(lhs, converted_rhs)
+                else:
+                    return self.builder.sub(lhs, converted_rhs)
+            elif LLVMTypes.is_float(convert_target):
+                if op == '+':
+                    return self.builder.fadd(lhs, converted_rhs)
+                else:
+                    return self.builder.fsub(lhs, converted_rhs)
+            else:
+                raise SemanticError(ctx=ctx, msg="Illegal operation: "+str(lhs)+op+str(rhs))
 
     def visitRelationalExpression(self, ctx:CParser.RelationalExpressionContext):
         """
@@ -650,7 +669,7 @@ class LLVMGenerator(CVisitor):
             lhs = self.visit(ctx.relationalExpression())
             op = ctx.children[1].getText()
             converted_target = lhs.type
-            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=converted_target)
+            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
             if LLVMTypes.is_int(converted_target):
                 return self.builder.icmp_signed(cmpop=op, lhs=lhs, rhs=converted_rhs)
             elif LLVMTypes.is_float(converted_target):
@@ -658,15 +677,12 @@ class LLVMGenerator(CVisitor):
             else:
                 raise SemanticError(ctx=ctx, msg="Unknown relation expression: "+str(lhs)+str(op)+str(rhs))
 
-    def visitStatement(self, ctx:CParser.StatementContext):
+    def visitBlockItem(self, ctx:CParser.BlockItemContext):
         """
-        statement
-            :   labeledStatement
-            |   compoundStatement
-            |   expressionStatement
-            |   selectionStatement
-            |   iterationStatement
-            |   jumpStatement
+        blockItem
+            :   statement
+            |   declaration
+            ;
         :param ctx:
         :return:
         """
@@ -674,6 +690,22 @@ class LLVMGenerator(CVisitor):
             self.visit(ctx.children[0])
         except SemanticError as e:
             self.error_listener.register_semantic_error(e)
+
+    def visitExternalDeclaration(self, ctx:CParser.ExternalDeclarationContext):
+        """
+        externalDeclaration
+            :   functionDefinition
+            |   declaration
+            |   ';' // stray ;
+            ;
+        :param ctx:
+        :return:
+        """
+        if not self.match_text(ctx.children[0], ","):
+            try:
+                self.visit(ctx.children[0])
+            except SemanticError as e:
+                self.error_listener.register_semantic_error(e)
 
     def save(self, filename):
         """保存到文件"""
