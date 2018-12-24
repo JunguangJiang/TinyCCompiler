@@ -72,7 +72,7 @@ class LLVMTypes(object):
     @classmethod
     def is_int(cls, type):
         """判断某个类型是否为整数类型"""
-        return type in [cls.int, cls.short]
+        return type in [cls.int, cls.short, cls.char]
 
     @classmethod
     def is_float(cls, type):
@@ -90,22 +90,27 @@ class LLVMTypes(object):
         """
         if value.type == target_type:  #如果转换前后类型相同，
             return value  #则不转换，直接返回
-        elif cls.is_int(value.type) and target_type == cls.bool:  #整数转化为布尔值
-            return builder.icmp_unsigned('!=', value, cls.bool(0))
-        elif cls.is_int(value.type) and cls.is_int(target_type):  #整数转化为整数
-            if value.type.width < target_type.width:  #扩展整数位数
-                return builder.sext(value, target_type)
-            else:  #减少整数位数
-                return builder.trunc(value, target_type)
-        elif cls.is_float(value.type) and cls.is_float(target_type):  #浮点数转换为浮点数
-            if value.type == cls.float:  #增加浮点数精度
-                return builder.fpext(value, target_type)
-            else:  #降低浮点数精度
-                return builder.fptrunc(value, target_type)
-        elif cls.is_float(value.type) and cls.is_int(target_type):  #浮点数转整数
-            return builder.fptosi(value, target_type)
-        elif cls.is_int(value.type) and cls.is_float(target_type):  #整数转浮点数
-            return builder.sitofp(value, target_type)
+
+        if cls.is_int(value.type) or value.type == cls.bool:  #从整数或者布尔值
+            if cls.is_int(target_type): #转成整数
+                if value.type.width < target_type.width:  # 扩展整数位数
+                    return builder.sext(value, target_type)
+                else:  # 减少整数位数
+                    return builder.trunc(value, target_type)
+            elif cls.is_float(target_type):  #转成浮点数
+                return builder.sitofp(value, target_type)
+            elif target_type == cls.bool:
+                return builder.icmp_unsigned('!=', value, cls.bool(0))
+
+        elif cls.is_float(value.type):  #从浮点数
+            if cls.is_float(target_type):  #转成浮点数
+                if value.type == cls.float:  # 增加浮点数精度
+                    return builder.fpext(value, target_type)
+                else:  # 降低浮点数精度
+                    return builder.fptrunc(value, target_type)
+            elif cls.is_int(target_type):  #转成整数
+                return builder.fptosi(value, target_type)
+
         elif type(value.type) == ir.ArrayType and type(target_type) == ir.PointerType \
                 and value.type.element == target_type.pointee:  #数组类型转成指针类型
             zero = ir.Constant(cls.int, 0)
@@ -115,6 +120,4 @@ class LLVMTypes(object):
         elif isinstance(value.type, ir.ArrayType) and isinstance(target_type, ir.ArrayType) \
                 and value.type.element == target_type.element:
             return builder.bitcast(value, target_type)
-        else:
-            raise SemanticError(ctx=ctx, msg="No known conversion from '%s' to '%s'" % (value.type, target_type))
-
+        raise SemanticError(ctx=ctx, msg="No known conversion from '%s' to '%s'" % (value.type, target_type))

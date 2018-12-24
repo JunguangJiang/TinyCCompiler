@@ -121,7 +121,7 @@ void testEvaluate(char S[], int true_answer)
 
 void evaluateTests()
 {
-	printf("四则运算测试:\n");
+	printf("evaluateTests:\n");
 	testEvaluate("3", 3);
 	testEvaluate("23+5", 28);
 	testEvaluate("3*4", 12);

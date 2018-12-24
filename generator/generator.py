@@ -82,8 +82,9 @@ class LLVMGenerator(CVisitor):
 
         self.visit(ctx.compoundStatement())
 
-        # if function_type.return_type == LLVMTypes.void:
-        #     self.builder.ret_void()
+        if function_type.return_type == LLVMTypes.void:
+            self.builder.ret_void()
+
         self.is_global = True
 
     def visitTypeSpecifier(self, ctx:CParser.TypeSpecifierContext):
@@ -342,9 +343,14 @@ class LLVMGenerator(CVisitor):
                 if len(converted_args) < len(args):  # 考虑变长参数
                     converted_args += args[len(lhs.args):]
                 return self.builder.call(lhs, converted_args), None
-        else:
-            # TODO
-            pass
+            elif op in ["++", "--"]:
+                one = lhs.type(1)
+                if op == '++':
+                    res = self.builder.add(lhs, one)
+                else:
+                    res = self.builder.sub(lhs, one)
+                self.builder.store(res, lhs_ptr)
+                return lhs, lhs_ptr
         raise NotImplementedError("visitPostfixExpression not finished yet")
 
     def visitPrimaryExpression(self, ctx:CParser.PrimaryExpressionContext):
@@ -379,10 +385,12 @@ class LLVMGenerator(CVisitor):
                 str_len = len(parse_escape(text[1:-1]))
                 return LLVMTypes.get_const_from_str(LLVMTypes.get_array_type(LLVMTypes.char, str_len+1), text, ctx=ctx), None
             else:
-                # TODO 目前只接受整数,需要根据text的特点，确定其为浮点数还是整数
-                if '.' in text:  # 目前的策略比较简单，只是根据有没有小数点来判断
+                # TODO 需要根据text的特点，确定其为浮点数、整数还是字符(目前的策略比较简单)
+                if '.' in text:  # 浮点数
                     const_value = LLVMTypes.get_const_from_str(LLVMTypes.double, text, ctx=ctx)
-                else:
+                elif text.startswith("'"): #字符
+                    const_value = LLVMTypes.get_const_from_str(LLVMTypes.char, text, ctx=ctx)
+                else: # 整数
                     const_value = LLVMTypes.get_const_from_str(LLVMTypes.int, text, ctx=ctx)
                 return const_value, None
 
@@ -650,6 +658,28 @@ class LLVMGenerator(CVisitor):
             else:
                 raise SemanticError(ctx=ctx, msg="Illegal operation: "+str(lhs)+op+str(rhs))
 
+    def _visitRelatioinAndEqualityExpression(self, ctx):
+        """
+        由于visitRelationalExpression和visitEqualityExpression的处理过程非常相像，
+        因此将它们的处理过程抽离成一个函数
+        :param ctx:
+        :return:
+        """
+        rhs = self.visit(ctx.children[-1])
+        if len(ctx.children) == 1:
+            return rhs
+        else:
+            lhs = self.visit(ctx.children[0])
+            op = ctx.children[1].getText()
+            converted_target = lhs.type
+            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
+            if LLVMTypes.is_int(converted_target):
+                return self.builder.icmp_signed(cmpop=op, lhs=lhs, rhs=converted_rhs)
+            elif LLVMTypes.is_float(converted_target):
+                return self.builder.fcmp_ordered(cmpop=op, lhs=lhs, rhs=converted_rhs)
+            else:
+                raise SemanticError(ctx=ctx, msg="Unknown relation expression: " + str(lhs) + str(op) + str(rhs))
+
     def visitRelationalExpression(self, ctx:CParser.RelationalExpressionContext):
         """
         relationalExpression
@@ -662,20 +692,19 @@ class LLVMGenerator(CVisitor):
         :param ctx:
         :return:
         """
-        rhs = self.visit(ctx.shiftExpression())
-        if len(ctx.children) == 1:
-            return rhs
-        else:
-            lhs = self.visit(ctx.relationalExpression())
-            op = ctx.children[1].getText()
-            converted_target = lhs.type
-            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
-            if LLVMTypes.is_int(converted_target):
-                return self.builder.icmp_signed(cmpop=op, lhs=lhs, rhs=converted_rhs)
-            elif LLVMTypes.is_float(converted_target):
-                return self.builder.fcmp_ordered(cmpop=op, lhs=lhs, rhs=converted_rhs)
-            else:
-                raise SemanticError(ctx=ctx, msg="Unknown relation expression: "+str(lhs)+str(op)+str(rhs))
+        return self._visitRelatioinAndEqualityExpression(ctx)
+
+    def visitEqualityExpression(self, ctx:CParser.EqualityExpressionContext):
+        """
+        equalityExpression
+            :   relationalExpression
+            |   equalityExpression '==' relationalExpression
+            |   equalityExpression '!=' relationalExpression
+            ;
+        :param ctx:
+        :return:
+        """
+        return self._visitRelatioinAndEqualityExpression(ctx)
 
     def visitBlockItem(self, ctx:CParser.BlockItemContext):
         """
@@ -683,6 +712,7 @@ class LLVMGenerator(CVisitor):
             :   statement
             |   declaration
             ;
+        以blockItem为单位进行语义报错
         :param ctx:
         :return:
         """
@@ -698,6 +728,7 @@ class LLVMGenerator(CVisitor):
             |   declaration
             |   ';' // stray ;
             ;
+        以externalDeclaration为单位进行语义报错
         :param ctx:
         :return:
         """

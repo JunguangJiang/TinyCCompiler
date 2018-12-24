@@ -2,6 +2,13 @@
 #include <string.h>
 #include <stdio.h>
 
+int strlen(char s[])
+{
+    int i=0;
+    while(s[i]) i++;
+    return i;
+}
+
 ////判断字符串s是否是回文串
 int isPalindrome(char s[])
 {
@@ -31,7 +38,7 @@ void testPalindrome(char s[], int true_answer)
 
 void palindromeTests()
 {
-    printf("回文串测试:\n");
+    printf("palindromeTests:\n");
     testPalindrome("", 1);
     testPalindrome("1", 1);
     testPalindrome("22", 1);
