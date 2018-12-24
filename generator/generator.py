@@ -2,7 +2,7 @@ from parser.CVisitor import CVisitor
 from parser.CParser import CParser
 import llvmlite.ir as ir
 from generator.types import LLVMTypes
-from generator.util import parse_escape, flat_list
+from generator.util import parse_escape
 from generator.errors import *
 
 
@@ -13,6 +13,7 @@ class LLVMGenerator(CVisitor):
         self.continue_block = None
         self.break_block = None
         self.emit_printf()
+        self.emit_exit()
         self.current_base_type = None  #当前上下文的基础数据类型
         self.is_global = True  #当前是否处于全局环境中
         self.error_listener = error_listener  #错误监听器
@@ -44,6 +45,12 @@ class LLVMGenerator(CVisitor):
         printf_func = ir.Function(self.module, printf_type, "printf")
         self.local_vars["printf"] = printf_func
 
+    def emit_exit(self):
+        """引入exit函数"""
+        exit_type = ir.FunctionType(LLVMTypes.void, (LLVMTypes.int, ), var_arg=False)
+        exit_func = ir.Function(self.module, exit_type, "exit")
+        self.local_vars["exit"] = exit_func
+
     def visitDeclaration(self, ctx:CParser.DeclarationContext):
         """
         declaration
@@ -67,7 +74,6 @@ class LLVMGenerator(CVisitor):
         self.is_global = False
         ret_type = self.visit(ctx.declarationSpecifiers())  #函数返回值的类型
         self.current_base_type = ret_type
-        # ctx.declarator().base_type = ret_type  # 将函数返回值类型ret_type向下传递到declarator子树中
         func_name, function_type, arg_names = self.visit(ctx.declarator())  # 获得函数名、函数类型、参数名列表
         llvm_function = ir.Function(self.module, function_type, name=func_name)
         self.builder = ir.IRBuilder(llvm_function.append_basic_block(name="entry"))
@@ -137,9 +143,7 @@ class LLVMGenerator(CVisitor):
         :param ctx:
         :return: 声明变量的名字和类型
         """
-        # base_type = self.visit(ctx.declarationSpecifiers())
         self.current_base_type = self.visit(ctx.declarationSpecifiers())
-        # ctx.declarator().base_type = base_type  # 将声明变量的基础类型向下传递到declarator子树中
         arg_name, arg_type = self.visit(ctx.declarator())
         return arg_name, arg_type
 
@@ -274,14 +278,31 @@ class LLVMGenerator(CVisitor):
         if self.match_rule(ctx.children[0], CParser.RULE_postfixExpression):  # postfixExpression
             return self.visit(ctx.postfixExpression())
         elif self.match_texts(ctx.children[0], ['++', '--']):  # '++' unaryExpression | '--' unaryExpression
-            lhs, lhs_ptr = self.visit(ctx.unaryExpression())
+            rhs, rhs_ptr = self.visit(ctx.unaryExpression())
             one = LLVMTypes.int(1)
             if self.match_text(ctx.children[0], '++'):
-                res = self.builder.add(lhs, one)
+                res = self.builder.add(rhs, one)
             else:
-                res = self.builder.sub(lhs, one)
-            self.builder.store(res, lhs_ptr)
-            return res, lhs_ptr
+                res = self.builder.sub(rhs, one)
+            self.builder.store(res, rhs_ptr)
+            return res, rhs_ptr
+        elif self.match_rule(ctx.children[0], CParser.RULE_unaryOperator):  #unaryOperator castExpression
+            op = self.visit(ctx.unaryOperator())
+            rhs, rhs_ptr = self.visit(ctx.castExpression())
+            if op == '&':
+                return rhs_ptr, None
+            elif op == '*':
+                zero = ir.Constant(LLVMTypes.int, 0)
+                ptr = self.builder.gep(rhs, [zero, zero])
+                return self.builder.load(ptr), None
+            elif op == '+':
+                return rhs, None
+            elif op == '-':
+                zero = ir.Constant(rhs.type, 0)
+                res = self.builder.sub(zero, rhs)
+                return res, None
+            else:
+                raise NotImplementedError("! and ~ not finished")
         else:
             # TODO
             raise NotImplementedError("visitUnaryExpression not finished yet.")
@@ -331,7 +352,11 @@ class LLVMGenerator(CVisitor):
                 array_index = self.visit(ctx.expression())
                 array_index = LLVMTypes.cast_type(self.builder, target_type=LLVMTypes.int, value=array_index, ctx=ctx)
                 zero = ir.Constant(LLVMTypes.int, 0)
-                ptr = self.builder.gep(lhs_ptr, [zero, array_index])
+                if type(lhs_ptr) is ir.Argument:
+                    array_indices = [array_index]
+                else:
+                    array_indices = [zero, array_index]
+                ptr = self.builder.gep(lhs_ptr, array_indices)
                 return self.builder.load(ptr), ptr
             elif op == '(':  # postfixExpression '(' argumentExpressionList? ')'
                 if len(ctx.children) == 4:
@@ -383,7 +408,7 @@ class LLVMGenerator(CVisitor):
                     raise SemanticError(ctx=ctx, msg="undefined identifier "+text)
             elif ctx.StringLiteral():
                 str_len = len(parse_escape(text[1:-1]))
-                return LLVMTypes.get_const_from_str(LLVMTypes.get_array_type(LLVMTypes.char, str_len+1), text, ctx=ctx), None
+                return LLVMTypes.get_const_from_str(LLVMTypes.get_array_type(LLVMTypes.char, str_len+1), const_value=text, ctx=ctx), None
             else:
                 # TODO 需要根据text的特点，确定其为浮点数、整数还是字符(目前的策略比较简单)
                 if '.' in text:  # 浮点数
@@ -488,17 +513,17 @@ class LLVMGenerator(CVisitor):
             init_val = self.visit(ctx.initializer())
             if isinstance(init_val, list):  # 如果初始值是一个列表
                 converted_val = ir.Constant(var_type, init_val)
-            else:
+            else:  # 如果初始值是一个值
                 if isinstance(var_type, ir.PointerType) and isinstance(init_val.type, ir.ArrayType) and var_type.pointee == init_val.type.element:
-                    var_type = init_val.type  #这个处理有必要吗？
+                    var_type = init_val.type  # 数组赋值给指针，不需要进行强制转换
                 converted_val = LLVMTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
 
-        if self.is_global:
+        if self.is_global:  #如果是全局变量
             self.local_vars[var_name] = ir.GlobalVariable(self.module, var_type, name=var_name)
             self.local_vars[var_name].linkage = "internal"
-            if len(ctx.children == 3):
+            if len(ctx.children) == 3:
                 self.local_vars[var_name].initializer = converted_val
-        else:
+        else:  #如果是局部变量
             self.local_vars[var_name] = self.builder.alloca(var_type)
             if len(ctx.children) == 3:
                 self.builder.store(converted_val, self.local_vars[var_name])
@@ -739,6 +764,24 @@ class LLVMGenerator(CVisitor):
         :return:
         """
         return self._visitRelatioinAndEqualityExpression(ctx)
+
+    def visitLogicalAndExpression(self, ctx:CParser.LogicalAndExpressionContext):
+        """
+        logicalAndExpression
+            :   inclusiveOrExpression
+            |   logicalAndExpression '&&' inclusiveOrExpression
+            ;
+        :param ctx:
+        :return:
+        """
+        rhs = self.visit(ctx.inclusiveOrExpression())
+        if len(ctx.children) == 1:
+            return rhs
+        else:
+            lhs = self.visit(ctx.logicalAndExpression())
+            converted_lhs = LLVMTypes.cast_type(self.builder, value=lhs, target_type=LLVMTypes.bool, ctx=ctx)
+            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=LLVMTypes.bool, ctx=ctx)
+            return self.builder.and_(converted_lhs, converted_rhs)
 
     def visitBlockItem(self, ctx:CParser.BlockItemContext):
         """

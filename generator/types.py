@@ -11,6 +11,7 @@ class LLVMTypes(object):
     float = ir.FloatType()
     double = ir.DoubleType()
     void = ir. VoidType()
+    # 字符串到C变量类型映射表
     str2type = {
         "int": int,
         "short": short,
@@ -20,6 +21,21 @@ class LLVMTypes(object):
         "float": float,
         "double": double,
         "void": void
+    }
+    # ASCII 转义表
+    ascii_mapping = {
+        '\\a': 7,
+        '\\b': 8,
+        '\\f': 12,
+        '\\n': 10,
+        '\\r': 13,
+        '\\t': 9,
+        '\\v': 11,
+        '\\\\': 92,
+        '\\?': 63,
+        "\\'": 39,
+        '\\"': 34,
+        '\\0': 0,
     }
 
     @staticmethod
@@ -51,10 +67,16 @@ class LLVMTypes(object):
         """
         if type(const_value) is str:
             if llvm_type == cls.char:
-                if len(const_value) > 1:
-                    return cls.char(ord(const_value[1]))
-                else:
-                    return cls.char(int(const_value))
+                if len(const_value) == 3:  # 若const_value形如'3',
+                    return cls.char(ord(str(const_value[1:-1])))  # 则将ASCII字符转成对应的整数存储
+                elif len(const_value) == 1:  # 若const_value形如44
+                    return cls.char(int(const_value))  #则已经是整数了
+                else:  # 若const_value是转移字符，例如'\n'
+                    value = const_value[1:-1]
+                    if value in cls.ascii_mapping:
+                        return cls.char(cls.ascii_mapping[value])
+                    else:
+                        raise SemanticError(ctx=ctx, msg="Unknown char value: %s"% value)
             elif llvm_type in [cls.float, cls.double]:
                 return llvm_type(float(const_value))
             elif llvm_type in [cls.short, cls.int]:
