@@ -84,6 +84,9 @@ class TinyCGenerator(CVisitor):
             |   'long'
             |   'float'
             |   'double'
+            |   structOrUnionSpecifier
+            |   enumSpecifier
+            |   typedefName
             |   typeSpecifier pointer
         :param ctx:
         :return: 对应的LLVM类型
@@ -94,8 +97,11 @@ class TinyCGenerator(CVisitor):
         elif match_texts(ctx, TinyCTypes.str2type.keys()):
             # void | char | short | int | long | float | double |
             return TinyCTypes.str2type[ctx.getText()]
+        elif match_rule(ctx.children[0], CParser.RULE_typedefName):  # typedefName
+            return self.visit(ctx.typedefName())
         else:
-            raise SemanticError(ctx=ctx, msg="Unknown type "+ctx.getText())
+            # TODO
+            raise NotImplementedError("visitTypeSpecifier")
 
     def visitParameterList(self, ctx:CParser.ParameterListContext):
         """
@@ -186,19 +192,20 @@ class TinyCGenerator(CVisitor):
             :   conditionalExpression
             |   unaryExpression assignmentOperator assignmentExpression
         :param ctx:
-        :return: 表达式的值
+        :return: 表达式的值，变量本身
         """
         if match_rule(ctx.children[0], CParser.RULE_conditionalExpression):
-            return self.visit(ctx.conditionalExpression())
+            lhs, lhs_ptr = self.visit(ctx.conditionalExpression())
+            return lhs, lhs_ptr
         elif match_rule(ctx.children[0], CParser.RULE_unaryExpression):
             lhs, lhs_ptr = self.visit(ctx.unaryExpression())
             op = self.visit(ctx.assignmentOperator())
-            rhs = self.visit(ctx.assignmentExpression())
-            # TODO 根据不同的op进行运算
+            rhs, _ = self.visit(ctx.assignmentExpression())
+            # TODO 3完善赋值运算符
             if op == '=':
                 converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=lhs_ptr.type.pointee, ctx=ctx)
                 self.builder.store(converted_rhs, lhs_ptr)
-                return converted_rhs
+                return converted_rhs, None
             else:
                 raise NotImplementedError("visitAssignmentExpression")
 
@@ -217,9 +224,9 @@ class TinyCGenerator(CVisitor):
         conditionalExpression
             :   logicalOrExpression ('?' expression ':' conditionalExpression)?
         :param ctx:
-        :return:表达式的值
+        :return:表达式的值，变量本身
         """
-        # TODO
+        # TODO 4实现条件表达式
         return self.visit(ctx.logicalOrExpression())
 
     def visitLogicalOrExpression(self, ctx:CParser.LogicalOrExpressionContext):
@@ -229,16 +236,16 @@ class TinyCGenerator(CVisitor):
             |   logicalOrExpression '||' logicalAndExpression
             ;
         :param ctx:
-        :return:表达式的值
+        :return:表达式的值，变量本身
         """
-        rhs = self.visit(ctx.logicalAndExpression())
+        rhs, rhs_ptr = self.visit(ctx.logicalAndExpression())
         if len(ctx.children) == 1:  # logicalAndExpression
-            return rhs
+            return rhs, rhs_ptr
         else:  # logicalOrExpression '||' logicalAndExpression
-            lhs = self.visit(ctx.logicalOrExpression())
+            lhs, _ = self.visit(ctx.logicalOrExpression())
             converted_lhs = TinyCTypes.cast_type(self.builder, value=lhs, target_type=TinyCTypes.bool, ctx=ctx)
             converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=TinyCTypes.bool, ctx=ctx)
-            return self.builder.or_(converted_lhs, converted_rhs)
+            return self.builder.or_(converted_lhs, converted_rhs), None
 
     def visitUnaryExpression(self, ctx:CParser.UnaryExpressionContext):
         """
@@ -270,9 +277,7 @@ class TinyCGenerator(CVisitor):
             if op == '&':
                 return rhs_ptr, None
             elif op == '*':
-                zero = ir.Constant(TinyCTypes.int, 0)
-                ptr = self.builder.gep(rhs, [zero, zero])
-                return self.builder.load(ptr), None
+                return self.builder.load(rhs), rhs
             elif op == '+':
                 return rhs, None
             elif op == '-':
@@ -280,9 +285,10 @@ class TinyCGenerator(CVisitor):
                 res = self.builder.sub(zero, rhs)
                 return res, None
             else:
+                # TODO 完善一元运算表达式
                 raise NotImplementedError("! and ~ not finished")
         else:
-            # TODO
+            # TODO 完善一元运算表达式
             raise NotImplementedError("visitUnaryExpression not finished yet.")
 
     def visitCastExpression(self, ctx:CParser.CastExpressionContext):
@@ -294,7 +300,7 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return: 表达式的值，变量本身
         """
-        # TODO
+        # TODO 实现类型转换表达式
         return self.visit(ctx.unaryExpression())
 
     def visitUnaryOperator(self, ctx:CParser.UnaryOperatorContext):
@@ -327,7 +333,7 @@ class TinyCGenerator(CVisitor):
             lhs, lhs_ptr = self.visit(ctx.postfixExpression())
             op = ctx.children[1].getText()
             if op == '[':  # postfixExpression '[' expression ']'
-                array_index = self.visit(ctx.expression())
+                array_index, _ = self.visit(ctx.expression())
                 array_index = TinyCTypes.cast_type(self.builder, target_type=TinyCTypes.int, value=array_index, ctx=ctx)
                 zero = ir.Constant(TinyCTypes.int, 0)
                 if type(lhs_ptr) is ir.Argument:
@@ -354,6 +360,9 @@ class TinyCGenerator(CVisitor):
                     res = self.builder.sub(lhs, one)
                 self.builder.store(res, lhs_ptr)
                 return lhs, lhs_ptr
+            else:
+                # TODO 实现结构体时需要实现.和->
+                raise NotImplementedError(". -> not finished yet.")
         raise NotImplementedError("visitPostfixExpression not finished yet")
 
     def visitPrimaryExpression(self, ctx:CParser.PrimaryExpressionContext):
@@ -367,7 +376,7 @@ class TinyCGenerator(CVisitor):
         :return: 表达式的值，变量本身
         """
         if len(ctx.children) == 3:
-            return self.visit(ctx.expression()), None
+            return self.visit(ctx.expression())
         else:
             text = ctx.getText()
             if ctx.Identifier():
@@ -391,9 +400,9 @@ class TinyCGenerator(CVisitor):
                 # TODO 需要根据text的特点，确定其为浮点数、整数还是字符(目前的策略比较简单)
                 if '.' in text:  # 浮点数
                     const_value = TinyCTypes.get_const_from_str(TinyCTypes.double, text, ctx=ctx)
-                elif text.startswith("'"): #字符
+                elif text.startswith("'"):  # 字符
                     const_value = TinyCTypes.get_const_from_str(TinyCTypes.char, text, ctx=ctx)
-                else: # 整数
+                else:  # 整数
                     const_value = TinyCTypes.get_const_from_str(TinyCTypes.int, text, ctx=ctx)
                 return const_value, None
 
@@ -410,9 +419,10 @@ class TinyCGenerator(CVisitor):
             arg_list = []
         else:
             arg_list = self.visit(ctx.argumentExpressionList())
-        arg = self.visit(ctx.assignmentExpression())
+        arg, _ = self.visit(ctx.assignmentExpression())
         arg_list.append(arg)
         return arg_list
+
 
     def visitJumpStatement(self, ctx:CParser.JumpStatementContext):
         """
@@ -427,7 +437,7 @@ class TinyCGenerator(CVisitor):
         jump_str = ctx.children[0].getText()
         if jump_str == "return":
             if len(ctx.children) == 3:
-                ret_val = self.visit(ctx.expression())
+                ret_val, _ = self.visit(ctx.expression())
                 converted_val = TinyCTypes.cast_type(
                     self.builder, target_type=self.builder.function.type.pointee.return_type, value=ret_val, ctx=ctx)
                 self.builder.ret(converted_val)
@@ -450,28 +460,28 @@ class TinyCGenerator(CVisitor):
             |   multiplicativeExpression '%' castExpression
             ;
         :param ctx:
-        :return: 表达式的值
+        :return: 表达式的值,变量本身
         """
         rhs, rhs_ptr = self.visit(ctx.castExpression())
         if match_rule(ctx.children[0], CParser.RULE_castExpression):
-            return rhs
+            return rhs, rhs_ptr
         else:
-            lhs = self.visit(ctx.multiplicativeExpression())
+            lhs, lhs_ptr = self.visit(ctx.multiplicativeExpression())
             converted_target = lhs.type
             converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)  # 将rhs转成lhs的类型
             op = ctx.children[1].getText()
             if TinyCTypes.is_int(converted_target): # 整数运算
                 if op == '*':
-                    return self.builder.mul(lhs, converted_rhs)
+                    return self.builder.mul(lhs, converted_rhs), None
                 elif op == '/':
-                    return self.builder.sdiv(lhs, converted_rhs)
+                    return self.builder.sdiv(lhs, converted_rhs), None
                 else:
-                    return self.builder.srem(lhs, converted_rhs)
+                    return self.builder.srem(lhs, converted_rhs), None
             elif TinyCTypes.is_float(converted_target):  #浮点数运算
                 if op == '*':
-                    return self.builder.fmul(lhs, converted_rhs)
+                    return self.builder.fmul(lhs, converted_rhs), None
                 elif op == '/':
-                    return self.builder.fdiv(lhs, converted_rhs)
+                    return self.builder.fdiv(lhs, converted_rhs), None
                 else:
                     raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
             else:
@@ -495,7 +505,8 @@ class TinyCGenerator(CVisitor):
                 if isinstance(var_type, ir.PointerType) and isinstance(init_val.type, ir.ArrayType) and var_type.pointee == init_val.type.element:
                     var_type = init_val.type  # 数组赋值给指针，不需要进行强制转换
                 converted_val = TinyCTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
-            # TODO 考虑所有可能的初始值情况
+            # TODO 目前多维数组初始化必须使用嵌套的方式，并且无法自动补零
+            # TODO 数组变量初始化时，未能自动进行类型转换
 
         if self.is_global:  #如果是全局变量
             self.local_vars[var_name] = ir.GlobalVariable(self.module, var_type, name=var_name)
@@ -518,7 +529,8 @@ class TinyCGenerator(CVisitor):
         :return:
         """
         if len(ctx.children) == 1:
-            return self.visit(ctx.assignmentExpression())
+            value, _ = self.visit(ctx.assignmentExpression())
+            return value
         else:
             return self.visit(ctx.initializerList())
 
@@ -567,12 +579,13 @@ class TinyCGenerator(CVisitor):
         elif iteration_type == "for":  # for循环
             cond_expression, update_expression = self.visit(ctx.forCondition())
         else:  # do-while循环
+            # TODO do-while循环
             raise NotImplementedError("do while")
 
         self.builder.branch(cond_block)
         self.builder.position_at_start(cond_block)
         if cond_expression:
-            cond_val = self.visit(cond_expression)
+            cond_val, _ = self.visit(cond_expression)
             converted_cond_val = TinyCTypes.cast_type(self.builder, target_type=TinyCTypes.bool, value=cond_val, ctx=ctx)
             self.builder.cbranch(converted_cond_val, loop_block, end_block)
         else:
@@ -648,7 +661,7 @@ class TinyCGenerator(CVisitor):
         :return:
         """
         if ctx.children[0].getText() == 'if':
-            cond_val = self.visit(ctx.expression())
+            cond_val, _ = self.visit(ctx.expression())
             converted_cond_val = TinyCTypes.cast_type(self.builder, target_type=TinyCTypes.bool, value=cond_val, ctx=ctx)
             statements = ctx.statement()
             if len(statements) == 2:  # 存在else分支
@@ -661,8 +674,7 @@ class TinyCGenerator(CVisitor):
                 with self.builder.if_then(converted_cond_val):
                     self.visit(statements[0])
         else:
-            # TODO
-            print(ctx.children[0].getText())
+            # TODO switch
             raise NotImplementedError("switch not finishe yet")
 
     def visitAdditiveExpression(self, ctx:CParser.AdditiveExpressionContext):
@@ -675,24 +687,24 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
-        rhs = self.visit(ctx.multiplicativeExpression())
+        rhs, rhs_ptr = self.visit(ctx.multiplicativeExpression())
         if len(ctx.children) == 1:  # multiplicativeExpression
-            return rhs
+            return rhs, rhs_ptr
         else:
-            lhs = self.visit(ctx.additiveExpression())
+            lhs, _ = self.visit(ctx.additiveExpression())
             op = ctx.children[1].getText()
             convert_target = lhs.type
             converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=convert_target, ctx=ctx)
             if TinyCTypes.is_int(convert_target):
                 if op == '+':
-                    return self.builder.add(lhs, converted_rhs)
+                    return self.builder.add(lhs, converted_rhs), None
                 else:
-                    return self.builder.sub(lhs, converted_rhs)
+                    return self.builder.sub(lhs, converted_rhs), None
             elif TinyCTypes.is_float(convert_target):
                 if op == '+':
-                    return self.builder.fadd(lhs, converted_rhs)
+                    return self.builder.fadd(lhs, converted_rhs), None
                 else:
-                    return self.builder.fsub(lhs, converted_rhs)
+                    return self.builder.fsub(lhs, converted_rhs), None
             else:
                 raise SemanticError(ctx=ctx, msg="Illegal operation: "+str(lhs)+op+str(rhs))
 
@@ -703,18 +715,18 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
-        rhs = self.visit(ctx.children[-1])
+        rhs, rhs_ptr = self.visit(ctx.children[-1])
         if len(ctx.children) == 1:
-            return rhs
+            return rhs, rhs_ptr
         else:
-            lhs = self.visit(ctx.children[0])
+            lhs, _ = self.visit(ctx.children[0])
             op = ctx.children[1].getText()
             converted_target = lhs.type
             converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
             if TinyCTypes.is_int(converted_target):
-                return self.builder.icmp_signed(cmpop=op, lhs=lhs, rhs=converted_rhs)
+                return self.builder.icmp_signed(cmpop=op, lhs=lhs, rhs=converted_rhs), None
             elif TinyCTypes.is_float(converted_target):
-                return self.builder.fcmp_ordered(cmpop=op, lhs=lhs, rhs=converted_rhs)
+                return self.builder.fcmp_ordered(cmpop=op, lhs=lhs, rhs=converted_rhs), None
             else:
                 raise SemanticError(ctx=ctx, msg="Unknown relation expression: " + str(lhs) + str(op) + str(rhs))
 
@@ -753,14 +765,14 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
-        rhs = self.visit(ctx.inclusiveOrExpression())
+        rhs, rhs_ptr = self.visit(ctx.inclusiveOrExpression())
         if len(ctx.children) == 1:
-            return rhs
+            return rhs, rhs_ptr
         else:
-            lhs = self.visit(ctx.logicalAndExpression())
+            lhs, _ = self.visit(ctx.logicalAndExpression())
             converted_lhs = TinyCTypes.cast_type(self.builder, value=lhs, target_type=TinyCTypes.bool, ctx=ctx)
             converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=TinyCTypes.bool, ctx=ctx)
-            return self.builder.and_(converted_lhs, converted_rhs)
+            return self.builder.and_(converted_lhs, converted_rhs), None
 
     def visitBlockItem(self, ctx:CParser.BlockItemContext):
         """
