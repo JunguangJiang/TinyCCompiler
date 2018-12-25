@@ -122,3 +122,4 @@ parser/*.java
 *.bc
 *.out
 reference/*
+unit_test/temp.txt

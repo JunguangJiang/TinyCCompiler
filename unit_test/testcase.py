@@ -1,6 +1,7 @@
 _cases = [
     "function.c",
-    "initialize.c"
+    "initialize.c",
+    "pointer.c",
 ]
 
 
