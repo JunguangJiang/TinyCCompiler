@@ -100,7 +100,7 @@ class TinyCGenerator(CVisitor):
         elif match_rule(ctx.children[0], CParser.RULE_typedefName):  # typedefName
             return self.visit(ctx.typedefName())
         else:
-            # TODO
+            # TODO 14,15
             raise NotImplementedError("visitTypeSpecifier")
 
     def visitParameterList(self, ctx:CParser.ParameterListContext):
@@ -285,10 +285,10 @@ class TinyCGenerator(CVisitor):
                 res = self.builder.sub(zero, rhs)
                 return res, None
             else:
-                # TODO 完善一元运算表达式
+                # TODO 12 完善一元运算表达式
                 raise NotImplementedError("! and ~ not finished")
         else:
-            # TODO 完善一元运算表达式
+            # TODO 12 完善一元运算表达式
             raise NotImplementedError("visitUnaryExpression not finished yet.")
 
     def visitCastExpression(self, ctx:CParser.CastExpressionContext):
@@ -579,7 +579,7 @@ class TinyCGenerator(CVisitor):
         elif iteration_type == "for":  # for循环
             cond_expression, update_expression = self.visit(ctx.forCondition())
         else:  # do-while循环
-            # TODO do-while循环
+            # TODO 11 do-while循环
             raise NotImplementedError("do while")
 
         self.builder.branch(cond_block)
@@ -674,7 +674,7 @@ class TinyCGenerator(CVisitor):
                 with self.builder.if_then(converted_cond_val):
                     self.visit(statements[0])
         else:
-            # TODO switch
+            # TODO 7switch
             raise NotImplementedError("switch not finishe yet")
 
     def visitAdditiveExpression(self, ctx:CParser.AdditiveExpressionContext):

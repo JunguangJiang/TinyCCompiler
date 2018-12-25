@@ -37,4 +37,5 @@ class TinyCErrorListener(ErrorListener):
         for err in self.errors:
             print(err)
         print(len(self.errors), "errors generated.")
+        # TODO 8错误报告打印的美化？使得打印出的错误类似于gcc的错误报告（彩色、有错误位置箭头等）
 
