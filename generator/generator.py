@@ -4,42 +4,21 @@ from parser.CParser import CParser
 from antlr4 import *
 import llvmlite.ir as ir
 from generator.types import TinyCTypes
-from generator.util import parse_escape
+from generator.util import *
 from generator.errors import *
 
 
 class TinyCGenerator(CVisitor):
     def __init__(self, error_listener=TinyCErrorListener()):
         self.module = ir.Module()
-        self.local_vars = {}
-        self.continue_block = None
-        self.break_block = None
-        self.emit_printf()
-        self.emit_exit()
+        self.local_vars = {}  # 局部变量
+        self.continue_block = None  # 当调用continue时应该跳转到的语句块
+        self.break_block = None  # 当调用break时应该跳转到的语句块
+        self.emit_printf()  # 引入printf函数
+        self.emit_exit()  # 引入exit函数
         self.current_base_type = None  #当前上下文的基础数据类型
         self.is_global = True  #当前是否处于全局环境中
         self.error_listener = error_listener  #错误监听器
-
-    @staticmethod
-    def match_rule(ctx, rule):
-        """判断ctx.getRuleIndex()==rule是否成立.若ctx无getRuleIndex()则返回False."""
-        if hasattr(ctx, 'getRuleIndex'):
-            return ctx.getRuleIndex() == rule
-        else:
-            return False
-
-    @staticmethod
-    def match_texts(ctx, texts):
-        """判断ctx.getText() in texts是否成立.若ctx无getText()则返回False. texts是一个字符串列表"""
-        if hasattr(ctx, 'getText'):
-            return ctx.getText() in texts
-        else:
-            return False
-
-    @classmethod
-    def match_text(cls, ctx, text):
-        """判断ctx.getText() == text是否成立.若ctx无getText()则返回False"""
-        return cls.match_texts(ctx, [text])
 
     def emit_printf(self):
         """引入printf函数"""
@@ -109,10 +88,10 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return: 对应的LLVM类型
         """
-        if self.match_rule(ctx.children[0], CParser.RULE_typeSpecifier):
+        if match_rule(ctx.children[0], CParser.RULE_typeSpecifier):
             # typeSpecifier pointer
             return ir.PointerType(self.visit(ctx.typeSpecifier()))
-        elif self.match_texts(ctx, TinyCTypes.str2type.keys()):
+        elif match_texts(ctx, TinyCTypes.str2type.keys()):
             # void | char | short | int | long | float | double |
             return TinyCTypes.str2type[ctx.getText()]
         else:
@@ -171,27 +150,26 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return: 声明变量的名字name,类型type,（如果是变量是函数，则还会返回所有参数的名字arg_names)
         """
-        # ctx.base_type = ctx.parentCtx.base_type  # 声明的基础数据类型,自上而下传递
         if len(ctx.children) == 1:  # Identifier
             return ctx.getText(), self.current_base_type
-        elif self.match_rule(ctx.children[0], CParser.RULE_directDeclarator):
+        elif match_rule(ctx.children[0], CParser.RULE_directDeclarator):
             name, old_type = self.visit(ctx.directDeclarator())
             if ctx.children[1].getText() == '[':
-                if self.match_text(ctx.children[2], ']'):  # directDeclarator '[' ']'
+                if match_text(ctx.children[2], ']'):  # directDeclarator '[' ']'
                     new_type = ir.PointerType(old_type)
                 else:  # directDeclarator '[' assignmentExpression ']'
                     array_size = int(ctx.children[2].getText())
                     new_type = ir.ArrayType(element=old_type, count=array_size)
                 return name, new_type
             elif ctx.children[1].getText() == '(':
-                if self.match_rule(ctx.children[2], CParser.RULE_parameterTypeList):
+                if match_rule(ctx.children[2], CParser.RULE_parameterTypeList):
                     # directDeclarator '(' parameterTypeList ')'
                     arg_names, arg_types = self.visit(ctx.parameterTypeList())  # 获得函数参数的名字列表和类型列表
                     new_type = ir.FunctionType(old_type, arg_types)
                     return name, new_type, arg_names
-                elif self.match_rule(ctx.children[2], CParser.RULE_identifierList):
-                    # TODO directDeclarator '(' identifierList ')'
-                    pass
+                elif match_rule(ctx.children[2], CParser.RULE_identifierList):
+                    # TODO directDeclarator '(' identifierList ')' 不知道这个是对应什么C语法
+                    raise NotImplementedError("directDeclarator '(' identifierList ')'")
                 else:
                     # directDeclarator '(' ')'
                     arg_names = []
@@ -200,9 +178,7 @@ class TinyCGenerator(CVisitor):
                     return name, new_type, arg_names
         else:
             # TODO '(' typeSpecifier? pointer directDeclarator ')'
-            pass
-        print("Error :visitDirectDeclarator not finished yet.")
-        exit(-1)
+            raise NotImplementedError("'(' typeSpecifier? pointer directDeclarator ')'")
 
     def visitAssignmentExpression(self, ctx:CParser.AssignmentExpressionContext):
         """
@@ -212,9 +188,9 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return: 表达式的值
         """
-        if self.match_rule(ctx.children[0], CParser.RULE_conditionalExpression):
+        if match_rule(ctx.children[0], CParser.RULE_conditionalExpression):
             return self.visit(ctx.conditionalExpression())
-        elif self.match_rule(ctx.children[0], CParser.RULE_unaryExpression):
+        elif match_rule(ctx.children[0], CParser.RULE_unaryExpression):
             lhs, lhs_ptr = self.visit(ctx.unaryExpression())
             op = self.visit(ctx.assignmentOperator())
             rhs = self.visit(ctx.assignmentExpression())
@@ -277,18 +253,18 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return: 表达式的值，变量本身
         """
-        if self.match_rule(ctx.children[0], CParser.RULE_postfixExpression):  # postfixExpression
+        if match_rule(ctx.children[0], CParser.RULE_postfixExpression):  # postfixExpression
             return self.visit(ctx.postfixExpression())
-        elif self.match_texts(ctx.children[0], ['++', '--']):  # '++' unaryExpression | '--' unaryExpression
+        elif match_texts(ctx.children[0], ['++', '--']):  # '++' unaryExpression | '--' unaryExpression
             rhs, rhs_ptr = self.visit(ctx.unaryExpression())
             one = TinyCTypes.int(1)
-            if self.match_text(ctx.children[0], '++'):
+            if match_text(ctx.children[0], '++'):
                 res = self.builder.add(rhs, one)
             else:
                 res = self.builder.sub(rhs, one)
             self.builder.store(res, rhs_ptr)
             return res, rhs_ptr
-        elif self.match_rule(ctx.children[0], CParser.RULE_unaryOperator):  #unaryOperator castExpression
+        elif match_rule(ctx.children[0], CParser.RULE_unaryOperator):  #unaryOperator castExpression
             op = self.visit(ctx.unaryOperator())
             rhs, rhs_ptr = self.visit(ctx.castExpression())
             if op == '&':
@@ -345,9 +321,9 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return: 表达式的值，变量本身
         """
-        if self.match_rule(ctx.children[0], CParser.RULE_primaryExpression):  # primaryExpression
+        if match_rule(ctx.children[0], CParser.RULE_primaryExpression):  # primaryExpression
             return self.visit(ctx.primaryExpression())
-        elif self.match_rule(ctx.children[0], CParser.RULE_postfixExpression):
+        elif match_rule(ctx.children[0], CParser.RULE_postfixExpression):
             lhs, lhs_ptr = self.visit(ctx.postfixExpression())
             op = ctx.children[1].getText()
             if op == '[':  # postfixExpression '[' expression ']'
@@ -477,7 +453,7 @@ class TinyCGenerator(CVisitor):
         :return: 表达式的值
         """
         rhs, rhs_ptr = self.visit(ctx.castExpression())
-        if self.match_rule(ctx.children[0], CParser.RULE_castExpression):
+        if match_rule(ctx.children[0], CParser.RULE_castExpression):
             return rhs
         else:
             lhs = self.visit(ctx.multiplicativeExpression())
@@ -626,10 +602,10 @@ class TinyCGenerator(CVisitor):
         :return: 循环判断表达式cond_expression,循环更新表达式update_expression,如果不存在则返回None
         """
         idx = 0
-        if self.match_rule(ctx.children[idx], CParser.RULE_forDeclaration):
+        if match_rule(ctx.children[idx], CParser.RULE_forDeclaration):
             idx += 2
             self.visit(ctx.forDeclaration())
-        elif self.match_rule(ctx.children[idx], CParser.RULE_expression):
+        elif match_rule(ctx.children[idx], CParser.RULE_expression):
             idx += 2
             self.visit(ctx.expression())
         else:
@@ -637,7 +613,7 @@ class TinyCGenerator(CVisitor):
 
         cond_expression = None
         update_expression = None
-        if self.match_rule(ctx.children[idx], CParser.RULE_forExpression):
+        if match_rule(ctx.children[idx], CParser.RULE_forExpression):
             cond_expression = ctx.children[idx]
             idx += 2
         else:
@@ -812,7 +788,7 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
-        if not self.match_text(ctx.children[0], ","):
+        if not match_text(ctx.children[0], ","):
             try:
                 self.visit(ctx.children[0])
             except SemanticError as e:

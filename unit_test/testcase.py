@@ -1,7 +1,8 @@
 _cases = [
-
+    "function.c",
+    "initialize.c"
 ]
 
 
 def cases():
-    return ["unittest/"+case for case in _cases]
+    return ["unit_test/"+case for case in _cases]

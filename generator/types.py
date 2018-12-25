@@ -8,7 +8,7 @@ class TinyCTypes(object):
     short = ir.IntType(16)
     char = ir.IntType(8)
     bool = ir.IntType(1)
-    float = ir.FloatType()
+    float = ir.DoubleType()
     double = ir.DoubleType()
     void = ir. VoidType()
     # 字符串到C变量类型映射表
@@ -39,15 +39,15 @@ class TinyCTypes(object):
     }
 
     @classmethod
-    def get_const_from_str(cls, llvm_type, const_value, ctx):
+    def get_const_from_str(cls, ctype, const_value, ctx):
         """
         从字符串获得常数类型
-        :param llvm_type: 类型,接受char,float,double,short,int,ir.ArrayType
+        :param ctype: 类型,接受char,float,double,short,int,ir.ArrayType
         :param const_value: 值，是一个字符串
         :return:
         """
         if type(const_value) is str:
-            if llvm_type == cls.char:
+            if ctype == cls.char:
                 if len(const_value) == 3:  # 若const_value形如'3',
                     return cls.char(ord(str(const_value[1:-1])))  # 则将ASCII字符转成对应的整数存储
                 elif len(const_value) == 1:  # 若const_value形如44
@@ -58,17 +58,17 @@ class TinyCTypes(object):
                         return cls.char(cls.ascii_mapping[value])
                     else:
                         raise SemanticError(ctx=ctx, msg="Unknown char value: %s"% value)
-            elif llvm_type in [cls.float, cls.double]:
-                return llvm_type(float(const_value))
-            elif llvm_type in [cls.short, cls.int]:
-                return llvm_type(int(const_value))
-            elif isinstance(llvm_type, ir.ArrayType) and llvm_type.element == cls.char:
+            elif ctype in [cls.float, cls.double]:
+                return ctype(float(const_value))
+            elif ctype in [cls.short, cls.int]:
+                return ctype(int(const_value))
+            elif isinstance(ctype, ir.ArrayType) and ctype.element == cls.char:
                 # string
                 str_val = parse_escape(const_value[1:-1]) + '\0'
-                return ir.Constant(llvm_type, bytearray(str_val, 'ascii'))
+                return ir.Constant(ctype, bytearray(str_val, 'ascii'))
             else:
                 # TODO
-                raise SemanticError(msg="No known conversion: '%s' to '%s'" % (const_value, llvm_type))
+                raise SemanticError(msg="No known conversion: '%s' to '%s'" % (const_value, ctype))
         else:
             raise SyntaxError(ctx=ctx, msg="get_const_from_str doesn't support const_value which is a " + str(type(const_value)))
 
@@ -108,9 +108,9 @@ class TinyCTypes(object):
         elif cls.is_float(value.type):  #从浮点数
             if cls.is_float(target_type):  #转成浮点数
                 if value.type == cls.float:  # 增加浮点数精度
-                    return builder.fpext(value, target_type)
+                    return builder.fpext(value, cls.double)
                 else:  # 降低浮点数精度
-                    return builder.fptrunc(value, target_type)
+                    return builder.fptrunc(value, cls.float)
             elif cls.is_int(target_type):  #转成整数
                 return builder.fptosi(value, target_type)
 

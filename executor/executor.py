@@ -35,12 +35,14 @@ def execute(ir_filename):
     """
     执行ir代码
     :param ir_filename:文件名
+    :param 代码输出的文件，如果没有，则打印在屏幕上
     :return:
     """
     # All these initializations are required for code generation!
     llvm.initialize()
     llvm.initialize_native_target()
-    llvm.initialize_native_asmprinter()  # yes, even this one
+    llvm.initialize_native_asmprinter()
+
     with open(ir_filename) as f:
         llvm_ir = f.read()
         engine = create_execution_engine()
@@ -49,6 +51,7 @@ def execute(ir_filename):
         main_type = CFUNCTYPE(c_int)
         main_func = main_type(engine.get_function_address("main"))
         ret = main_func()
+
         return ret
 
 
