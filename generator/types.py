@@ -3,7 +3,7 @@ from generator.util import parse_escape
 from generator.errors import SemanticError
 
 
-class LLVMTypes(object):
+class TinyCTypes(object):
     int = ir.IntType(32)
     short = ir.IntType(16)
     char = ir.IntType(8)
@@ -37,25 +37,6 @@ class LLVMTypes(object):
         '\\"': 34,
         '\\0': 0,
     }
-
-    @staticmethod
-    def get_array_type(elem_type, count):
-        """
-        获得数组类型
-        :param elem_type: 元素的类型
-        :param count: 数组大小
-        :return:
-        """
-        return ir.ArrayType(element=elem_type, count=count)
-
-    @staticmethod
-    def get_pointer_type(pointee_type):
-        """
-        获得指针类型
-        :param pointee_type: 指向的元素的类型
-        :return:
-        """
-        return ir.PointerType(pointee=pointee_type)
 
     @classmethod
     def get_const_from_str(cls, llvm_type, const_value, ctx):

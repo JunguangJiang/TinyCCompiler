@@ -1,5 +1,9 @@
 # 所有测试文件的名字
-test_filenames = [
-    "test/palindrome_en.c",
-    "test/arithmetic_en.c",
+_cases = [
+    "palindrome_en.c",
+    "arithmetic_en.c",
 ]
+
+
+def cases():
+    return ["test/"+case for case in _cases]

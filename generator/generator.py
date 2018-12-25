@@ -3,12 +3,12 @@ from parser.CLexer import CLexer
 from parser.CParser import CParser
 from antlr4 import *
 import llvmlite.ir as ir
-from generator.types import LLVMTypes
+from generator.types import TinyCTypes
 from generator.util import parse_escape
 from generator.errors import *
 
 
-class LLVMGenerator(CVisitor):
+class TinyCGenerator(CVisitor):
     def __init__(self, error_listener=TinyCErrorListener()):
         self.module = ir.Module()
         self.local_vars = {}
@@ -43,13 +43,13 @@ class LLVMGenerator(CVisitor):
 
     def emit_printf(self):
         """引入printf函数"""
-        printf_type = ir.FunctionType(LLVMTypes.int, (LLVMTypes.get_pointer_type(LLVMTypes.char),), var_arg=True)
+        printf_type = ir.FunctionType(TinyCTypes.int, (ir.PointerType(TinyCTypes.char),), var_arg=True)
         printf_func = ir.Function(self.module, printf_type, "printf")
         self.local_vars["printf"] = printf_func
 
     def emit_exit(self):
         """引入exit函数"""
-        exit_type = ir.FunctionType(LLVMTypes.void, (LLVMTypes.int, ), var_arg=False)
+        exit_type = ir.FunctionType(TinyCTypes.void, (TinyCTypes.int, ), var_arg=False)
         exit_func = ir.Function(self.module, exit_type, "exit")
         self.local_vars["exit"] = exit_func
 
@@ -90,7 +90,7 @@ class LLVMGenerator(CVisitor):
 
         self.visit(ctx.compoundStatement())
 
-        if function_type.return_type == LLVMTypes.void:
+        if function_type.return_type == TinyCTypes.void:
             self.builder.ret_void()
 
         self.is_global = True
@@ -111,10 +111,10 @@ class LLVMGenerator(CVisitor):
         """
         if self.match_rule(ctx.children[0], CParser.RULE_typeSpecifier):
             # typeSpecifier pointer
-            return LLVMTypes.get_pointer_type(self.visit(ctx.typeSpecifier()))
-        elif self.match_texts(ctx, LLVMTypes.str2type.keys()):
+            return ir.PointerType(self.visit(ctx.typeSpecifier()))
+        elif self.match_texts(ctx, TinyCTypes.str2type.keys()):
             # void | char | short | int | long | float | double |
-            return LLVMTypes.str2type[ctx.getText()]
+            return TinyCTypes.str2type[ctx.getText()]
         else:
             raise SemanticError(ctx=ctx, msg="Unknown type "+ctx.getText())
 
@@ -178,10 +178,10 @@ class LLVMGenerator(CVisitor):
             name, old_type = self.visit(ctx.directDeclarator())
             if ctx.children[1].getText() == '[':
                 if self.match_text(ctx.children[2], ']'):  # directDeclarator '[' ']'
-                    new_type = LLVMTypes.get_pointer_type(old_type)
+                    new_type = ir.PointerType(old_type)
                 else:  # directDeclarator '[' assignmentExpression ']'
                     array_size = int(ctx.children[2].getText())
-                    new_type = LLVMTypes.get_array_type(elem_type=old_type, count=array_size)
+                    new_type = ir.ArrayType(element=old_type, count=array_size)
                 return name, new_type
             elif ctx.children[1].getText() == '(':
                 if self.match_rule(ctx.children[2], CParser.RULE_parameterTypeList):
@@ -220,7 +220,7 @@ class LLVMGenerator(CVisitor):
             rhs = self.visit(ctx.assignmentExpression())
             # TODO 根据不同的op进行运算
             if op == '=':
-                converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=lhs_ptr.type.pointee, ctx=ctx)
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=lhs_ptr.type.pointee, ctx=ctx)
                 self.builder.store(converted_rhs, lhs_ptr)
                 return converted_rhs
             else:
@@ -260,8 +260,8 @@ class LLVMGenerator(CVisitor):
             return rhs
         else:  # logicalOrExpression '||' logicalAndExpression
             lhs = self.visit(ctx.logicalOrExpression())
-            converted_lhs = LLVMTypes.cast_type(self.builder, value=lhs, target_type=LLVMTypes.bool, ctx=ctx)
-            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=LLVMTypes.bool, ctx=ctx)
+            converted_lhs = TinyCTypes.cast_type(self.builder, value=lhs, target_type=TinyCTypes.bool, ctx=ctx)
+            converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=TinyCTypes.bool, ctx=ctx)
             return self.builder.or_(converted_lhs, converted_rhs)
 
     def visitUnaryExpression(self, ctx:CParser.UnaryExpressionContext):
@@ -281,7 +281,7 @@ class LLVMGenerator(CVisitor):
             return self.visit(ctx.postfixExpression())
         elif self.match_texts(ctx.children[0], ['++', '--']):  # '++' unaryExpression | '--' unaryExpression
             rhs, rhs_ptr = self.visit(ctx.unaryExpression())
-            one = LLVMTypes.int(1)
+            one = TinyCTypes.int(1)
             if self.match_text(ctx.children[0], '++'):
                 res = self.builder.add(rhs, one)
             else:
@@ -294,7 +294,7 @@ class LLVMGenerator(CVisitor):
             if op == '&':
                 return rhs_ptr, None
             elif op == '*':
-                zero = ir.Constant(LLVMTypes.int, 0)
+                zero = ir.Constant(TinyCTypes.int, 0)
                 ptr = self.builder.gep(rhs, [zero, zero])
                 return self.builder.load(ptr), None
             elif op == '+':
@@ -352,8 +352,8 @@ class LLVMGenerator(CVisitor):
             op = ctx.children[1].getText()
             if op == '[':  # postfixExpression '[' expression ']'
                 array_index = self.visit(ctx.expression())
-                array_index = LLVMTypes.cast_type(self.builder, target_type=LLVMTypes.int, value=array_index, ctx=ctx)
-                zero = ir.Constant(LLVMTypes.int, 0)
+                array_index = TinyCTypes.cast_type(self.builder, target_type=TinyCTypes.int, value=array_index, ctx=ctx)
+                zero = ir.Constant(TinyCTypes.int, 0)
                 if type(lhs_ptr) is ir.Argument:
                     array_indices = [array_index]
                 else:
@@ -365,7 +365,7 @@ class LLVMGenerator(CVisitor):
                     args = self.visit(ctx.argumentExpressionList())
                 else:
                     args = []
-                converted_args = [LLVMTypes.cast_type(self.builder, value=arg, target_type=callee_arg.type, ctx=ctx)
+                converted_args = [TinyCTypes.cast_type(self.builder, value=arg, target_type=callee_arg.type, ctx=ctx)
                                   for arg, callee_arg in zip(args, lhs.args)]
                 if len(converted_args) < len(args):  # 考虑变长参数
                     converted_args += args[len(lhs.args):]
@@ -401,7 +401,7 @@ class LLVMGenerator(CVisitor):
                         var_val = var
                     else:
                         if isinstance(var.type.pointee, ir.ArrayType):
-                            zero = ir.Constant(LLVMTypes.int, 0)
+                            zero = ir.Constant(TinyCTypes.int, 0)
                             var_val = self.builder.gep(var, [zero, zero])
                         else:
                             var_val = self.builder.load(var)
@@ -410,15 +410,15 @@ class LLVMGenerator(CVisitor):
                     raise SemanticError(ctx=ctx, msg="undefined identifier "+text)
             elif ctx.StringLiteral():
                 str_len = len(parse_escape(text[1:-1]))
-                return LLVMTypes.get_const_from_str(LLVMTypes.get_array_type(LLVMTypes.char, str_len+1), const_value=text, ctx=ctx), None
+                return TinyCTypes.get_const_from_str(ir.ArrayType(TinyCTypes.char, str_len+1), const_value=text, ctx=ctx), None
             else:
                 # TODO 需要根据text的特点，确定其为浮点数、整数还是字符(目前的策略比较简单)
                 if '.' in text:  # 浮点数
-                    const_value = LLVMTypes.get_const_from_str(LLVMTypes.double, text, ctx=ctx)
+                    const_value = TinyCTypes.get_const_from_str(TinyCTypes.double, text, ctx=ctx)
                 elif text.startswith("'"): #字符
-                    const_value = LLVMTypes.get_const_from_str(LLVMTypes.char, text, ctx=ctx)
+                    const_value = TinyCTypes.get_const_from_str(TinyCTypes.char, text, ctx=ctx)
                 else: # 整数
-                    const_value = LLVMTypes.get_const_from_str(LLVMTypes.int, text, ctx=ctx)
+                    const_value = TinyCTypes.get_const_from_str(TinyCTypes.int, text, ctx=ctx)
                 return const_value, None
 
     def visitArgumentExpressionList(self, ctx:CParser.ArgumentExpressionListContext):
@@ -452,7 +452,7 @@ class LLVMGenerator(CVisitor):
         if jump_str == "return":
             if len(ctx.children) == 3:
                 ret_val = self.visit(ctx.expression())
-                converted_val = LLVMTypes.cast_type(
+                converted_val = TinyCTypes.cast_type(
                     self.builder, target_type=self.builder.function.type.pointee.return_type, value=ret_val, ctx=ctx)
                 self.builder.ret(converted_val)
             else:
@@ -482,16 +482,16 @@ class LLVMGenerator(CVisitor):
         else:
             lhs = self.visit(ctx.multiplicativeExpression())
             converted_target = lhs.type
-            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)  # 将rhs转成lhs的类型
+            converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)  # 将rhs转成lhs的类型
             op = ctx.children[1].getText()
-            if LLVMTypes.is_int(converted_target): # 整数运算
+            if TinyCTypes.is_int(converted_target): # 整数运算
                 if op == '*':
                     return self.builder.mul(lhs, converted_rhs)
                 elif op == '/':
                     return self.builder.sdiv(lhs, converted_rhs)
                 else:
                     return self.builder.srem(lhs, converted_rhs)
-            elif LLVMTypes.is_float(converted_target):  #浮点数运算
+            elif TinyCTypes.is_float(converted_target):  #浮点数运算
                 if op == '*':
                     return self.builder.fmul(lhs, converted_rhs)
                 elif op == '/':
@@ -518,7 +518,8 @@ class LLVMGenerator(CVisitor):
             else:  # 如果初始值是一个值
                 if isinstance(var_type, ir.PointerType) and isinstance(init_val.type, ir.ArrayType) and var_type.pointee == init_val.type.element:
                     var_type = init_val.type  # 数组赋值给指针，不需要进行强制转换
-                converted_val = LLVMTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
+                converted_val = TinyCTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
+            # TODO 考虑所有可能的初始值情况
 
         if self.is_global:  #如果是全局变量
             self.local_vars[var_name] = ir.GlobalVariable(self.module, var_type, name=var_name)
@@ -596,7 +597,7 @@ class LLVMGenerator(CVisitor):
         self.builder.position_at_start(cond_block)
         if cond_expression:
             cond_val = self.visit(cond_expression)
-            converted_cond_val = LLVMTypes.cast_type(self.builder, target_type=LLVMTypes.bool, value=cond_val, ctx=ctx)
+            converted_cond_val = TinyCTypes.cast_type(self.builder, target_type=TinyCTypes.bool, value=cond_val, ctx=ctx)
             self.builder.cbranch(converted_cond_val, loop_block, end_block)
         else:
             self.builder.branch(loop_block)
@@ -672,7 +673,7 @@ class LLVMGenerator(CVisitor):
         """
         if ctx.children[0].getText() == 'if':
             cond_val = self.visit(ctx.expression())
-            converted_cond_val = LLVMTypes.cast_type(self.builder, target_type=LLVMTypes.bool, value=cond_val, ctx=ctx)
+            converted_cond_val = TinyCTypes.cast_type(self.builder, target_type=TinyCTypes.bool, value=cond_val, ctx=ctx)
             statements = ctx.statement()
             if len(statements) == 2:  # 存在else分支
                 with self.builder.if_else(converted_cond_val) as (then, otherwise):
@@ -705,13 +706,13 @@ class LLVMGenerator(CVisitor):
             lhs = self.visit(ctx.additiveExpression())
             op = ctx.children[1].getText()
             convert_target = lhs.type
-            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=convert_target, ctx=ctx)
-            if LLVMTypes.is_int(convert_target):
+            converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=convert_target, ctx=ctx)
+            if TinyCTypes.is_int(convert_target):
                 if op == '+':
                     return self.builder.add(lhs, converted_rhs)
                 else:
                     return self.builder.sub(lhs, converted_rhs)
-            elif LLVMTypes.is_float(convert_target):
+            elif TinyCTypes.is_float(convert_target):
                 if op == '+':
                     return self.builder.fadd(lhs, converted_rhs)
                 else:
@@ -733,10 +734,10 @@ class LLVMGenerator(CVisitor):
             lhs = self.visit(ctx.children[0])
             op = ctx.children[1].getText()
             converted_target = lhs.type
-            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
-            if LLVMTypes.is_int(converted_target):
+            converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
+            if TinyCTypes.is_int(converted_target):
                 return self.builder.icmp_signed(cmpop=op, lhs=lhs, rhs=converted_rhs)
-            elif LLVMTypes.is_float(converted_target):
+            elif TinyCTypes.is_float(converted_target):
                 return self.builder.fcmp_ordered(cmpop=op, lhs=lhs, rhs=converted_rhs)
             else:
                 raise SemanticError(ctx=ctx, msg="Unknown relation expression: " + str(lhs) + str(op) + str(rhs))
@@ -781,8 +782,8 @@ class LLVMGenerator(CVisitor):
             return rhs
         else:
             lhs = self.visit(ctx.logicalAndExpression())
-            converted_lhs = LLVMTypes.cast_type(self.builder, value=lhs, target_type=LLVMTypes.bool, ctx=ctx)
-            converted_rhs = LLVMTypes.cast_type(self.builder, value=rhs, target_type=LLVMTypes.bool, ctx=ctx)
+            converted_lhs = TinyCTypes.cast_type(self.builder, value=lhs, target_type=TinyCTypes.bool, ctx=ctx)
+            converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=TinyCTypes.bool, ctx=ctx)
             return self.builder.and_(converted_lhs, converted_rhs)
 
     def visitBlockItem(self, ctx:CParser.BlockItemContext):
@@ -840,7 +841,7 @@ def generate(input_filename, output_filename):
 
     tree = parser.compilationUnit()
 
-    generator = LLVMGenerator(error_listener)
+    generator = TinyCGenerator(error_listener)
     generator.visit(tree)
     generator.save(output_filename)
 
