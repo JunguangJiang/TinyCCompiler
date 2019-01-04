@@ -1,6 +1,6 @@
-from parser.CVisitor import CVisitor
-from parser.CLexer import CLexer
-from parser.CParser import CParser
+from parser_.CVisitor import CVisitor
+from parser_.CLexer import CLexer
+from parser_.CParser import CParser
 from antlr4 import *
 import llvmlite.ir as ir
 from generator.types import TinyCTypes
@@ -14,6 +14,7 @@ class TinyCGenerator(CVisitor):
         self.local_vars = {}  # 局部变量
         self.continue_block = None  # 当调用continue时应该跳转到的语句块
         self.break_block = None  # 当调用break时应该跳转到的语句块
+        self.switch_context = None  # TODO
         self.emit_printf()  # 引入printf函数
         self.emit_exit()  # 引入exit函数
         self.current_base_type = None  #当前上下文的基础数据类型
@@ -206,6 +207,96 @@ class TinyCGenerator(CVisitor):
                 converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=lhs_ptr.type.pointee, ctx=ctx)
                 self.builder.store(converted_rhs, lhs_ptr)
                 return converted_rhs, None
+            elif op == '+=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.add(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    new_value = self.builder.fadd(lhs, converted_rhs)
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
+            elif op == '-=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.sub(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    new_value = self.builder.fsub(lhs, converted_rhs)
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
+            elif op == '*=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.mul(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    new_value = self.builder.fmul(lhs, converted_rhs)
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
+            elif op == '/=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.sdiv(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    new_value = self.builder.fdiv(lhs, converted_rhs)
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
+            elif op == '%=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.srem(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
+            elif op == '<<=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.shl(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
+            elif op == '>>=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.ashr(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
+            elif op == '|=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.or_(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
+            elif op == '&=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.and_(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
+            elif op == '^=':
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if TinyCTypes.is_int(target_type):
+                    new_value = self.builder.xor(lhs, converted_rhs)
+                elif TinyCTypes.is_float(target_type):
+                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
             else:
                 raise NotImplementedError("visitAssignmentExpression")
 
@@ -226,8 +317,21 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:表达式的值，变量本身
         """
-        # TODO 4实现条件表达式
-        return self.visit(ctx.logicalOrExpression())
+        if ctx.expression() is None:
+            return self.visit(ctx.logicalOrExpression())
+        cond_val, _ = self.visit(ctx.logicalOrExpression())
+        converted_cond_val = TinyCTypes.cast_type(self.builder, target_type=TinyCTypes.bool, value=cond_val, ctx=ctx)
+        # TODO type cast
+        true_val, _ = self.visit(ctx.expression())
+        false_val, _ = self.visit(ctx.conditionalExpression())
+        ret_pointer = self.builder.alloca(true_val.type)
+        with self.builder.if_else(converted_cond_val) as (then, otherwise):
+            with then:
+                self.builder.store(true_val, ret_pointer)
+            with otherwise:
+                self.builder.store(false_val, ret_pointer)
+        ret_val = self.builder.load(ret_pointer)
+        return ret_val, None
 
     def visitLogicalOrExpression(self, ctx:CParser.LogicalOrExpressionContext):
         """
@@ -238,14 +342,21 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:表达式的值，变量本身
         """
-        rhs, rhs_ptr = self.visit(ctx.logicalAndExpression())
         if len(ctx.children) == 1:  # logicalAndExpression
+            rhs, rhs_ptr = self.visit(ctx.logicalAndExpression())
             return rhs, rhs_ptr
         else:  # logicalOrExpression '||' logicalAndExpression
             lhs, _ = self.visit(ctx.logicalOrExpression())
             converted_lhs = TinyCTypes.cast_type(self.builder, value=lhs, target_type=TinyCTypes.bool, ctx=ctx)
-            converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=TinyCTypes.bool, ctx=ctx)
-            return self.builder.or_(converted_lhs, converted_rhs), None
+            result = self.builder.alloca(TinyCTypes.bool)
+            with self.builder.if_else(converted_lhs) as (then, otherwise):
+                with then:
+                    self.builder.store(TinyCTypes.bool(1), result)
+                with otherwise:
+                    rhs, rhs_ptr = self.visit(ctx.logicalAndExpression())
+                    converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=TinyCTypes.bool, ctx=ctx)
+                    self.builder.store(converted_rhs, result)
+            return self.builder.load(result), None
 
     def visitUnaryExpression(self, ctx:CParser.UnaryExpressionContext):
         """
@@ -674,8 +785,71 @@ class TinyCGenerator(CVisitor):
                 with self.builder.if_then(converted_cond_val):
                     self.visit(statements[0])
         else:
-            # TODO 7switch
-            raise NotImplementedError("switch not finishe yet")
+            name_prefix = self.builder.block.name
+            start_block = self.builder.block
+            end_block = self.builder.append_basic_block(name=name_prefix + '.end_switch')
+            old_context = self.switch_context
+            old_break = self.break_block
+            self.break_block = end_block
+            cond_val, _ = self.visit(ctx.expression())
+            self.switch_context = [[], None, name_prefix + '.case.']
+            self.visit(ctx.statement(0))
+            try:
+                self.builder.branch(end_block)
+            except AssertionError:
+                # 最后一个标签里有break或return语句，不用跳转
+                pass
+            label_blocks = []
+            for i in range(len(self.switch_context[0])):
+                label_blocks.append(self.builder.append_basic_block(name=name_prefix + '.label.' + str(i)))
+            self.builder.position_at_end(start_block)
+            self.builder.branch(label_blocks[0])
+            for i, (label, _block) in enumerate(self.switch_context[0]):
+                self.builder.position_at_end(label_blocks[i])
+                if isinstance(label, str):
+                    self.builder.branch(_block)
+                else:
+                    constant, _ = self.visit(label)
+                    condition = self.builder.icmp_signed(cmpop='==', lhs=cond_val, rhs=constant)
+                    if i == len(self.switch_context[0]) - 1:
+                        false_block = end_block
+                    else:
+                        false_block = label_blocks[i + 1]
+                    self.builder.cbranch(condition, _block, false_block)
+            self.builder.position_at_start(end_block)
+            self.switch_context = old_context
+            self.break_block = old_break
+
+    def visitLabeledStatement(self, ctx:CParser.LabeledStatementContext):
+        """
+        labeledStatement
+            :   Identifier ':' statement
+            |   'case' constantExpression ':' statement
+            |   'default' ':' statement
+            ;
+        :param ctx:
+        :return:
+        """
+        if ctx.children[0].getText() == 'Identifier':
+            raise NotImplementedError('Identifier label is not implemented yet.')
+        if len(ctx.children) == 4:
+            block_name, label = self.switch_context[2] + str(len(self.switch_context[0])),  ctx.constantExpression()
+        else:
+            block_name, label = self.switch_context[2] + 'default', 'default'
+        content_block = self.builder.append_basic_block(name=block_name)
+        self.builder.position_at_end(content_block)
+        if self.switch_context[1] is not None:
+            cur_block = self.builder.block
+            self.builder.position_at_end(self.switch_context[1])
+            try:
+                self.builder.branch(cur_block)
+            except AssertionError:
+                # 上一个分支有return或break语句时不用跳到当前分支
+                pass
+            self.builder.position_at_end(cur_block)
+        self.switch_context[1] = self.builder.block
+        self.visit(ctx.statement())
+        self.switch_context[0].append((label, content_block))
 
     def visitAdditiveExpression(self, ctx:CParser.AdditiveExpressionContext):
         """
@@ -744,6 +918,27 @@ class TinyCGenerator(CVisitor):
         """
         return self._visitRelatioinAndEqualityExpression(ctx)
 
+    def visitShiftExpression(self, ctx:CParser.ShiftExpressionContext):
+        """
+        shiftExpression
+            :   additiveExpression
+            |   shiftExpression '<<' additiveExpression
+            |   shiftExpression '>>' additiveExpression
+            ;
+        :param ctx:
+        :return:
+        """
+        rhs, rhs_ptr = self.visit(ctx.additiveExpression())
+        if len(ctx.children) == 1:
+            return rhs, rhs_ptr
+        else:
+            lhs, _ = self.visit(ctx.shiftExpression())
+            if ctx.children[1].getText() == '<<':
+                return self.builder.shl(lhs, rhs), None
+            else:
+                return self.builder.ashr(lhs, rhs), None
+
+
     def visitEqualityExpression(self, ctx:CParser.EqualityExpressionContext):
         """
         equalityExpression
@@ -765,14 +960,69 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
-        rhs, rhs_ptr = self.visit(ctx.inclusiveOrExpression())
         if len(ctx.children) == 1:
+            rhs, rhs_ptr = self.visit(ctx.inclusiveOrExpression())
             return rhs, rhs_ptr
         else:
             lhs, _ = self.visit(ctx.logicalAndExpression())
             converted_lhs = TinyCTypes.cast_type(self.builder, value=lhs, target_type=TinyCTypes.bool, ctx=ctx)
-            converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=TinyCTypes.bool, ctx=ctx)
-            return self.builder.and_(converted_lhs, converted_rhs), None
+            result = self.builder.alloca(TinyCTypes.bool)
+            with self.builder.if_else(converted_lhs) as (then, otherwise):
+                with then:
+                    rhs, rhs_ptr = self.visit(ctx.inclusiveOrExpression())
+                    converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=TinyCTypes.bool, ctx=ctx)
+                    self.builder.store(converted_rhs, result)
+                with otherwise:
+                    self.builder.store(TinyCTypes.bool(0), result)
+            return self.builder.load(result), None
+
+    def visitInclusiveOrExpression(self, ctx: CParser.InclusiveOrExpressionContext):
+        """
+        inclusiveOrExpression
+            :   exclusiveOrExpression
+            |   inclusiveOrExpression '|' exclusiveOrExpression
+            ;
+        :param ctx:
+        :return:
+        """
+        rhs, rhs_ptr = self.visit(ctx.exclusiveOrExpression())
+        if len(ctx.children) == 1:
+            return rhs, rhs_ptr
+        else:
+            lhs, _ = self.visit(ctx.inclusiveOrExpression())
+            return self.builder.or_(lhs, rhs), None
+
+    def visitExclusiveOrExpression(self, ctx:CParser.ExclusiveOrExpressionContext):
+        """
+        exclusiveOrExpression
+            :   andExpression
+            |   exclusiveOrExpression '^' andExpression
+            ;
+        :param ctx:
+        :return:
+        """
+        rhs, rhs_ptr = self.visit(ctx.andExpression())
+        if len(ctx.children) == 1:
+            return rhs, rhs_ptr
+        else:
+            lhs, _ = self.visit(ctx.exclusiveOrExpression())
+            return self.builder.xor(lhs, rhs), None
+
+    def visitAndExpression(self, ctx:CParser.AndExpressionContext):
+        """
+        andExpression
+            :   equalityExpression
+            |   andExpression '&' equalityExpression
+            ;
+        :param ctx:
+        :return:
+        """
+        rhs, rhs_ptr = self.visit(ctx.equalityExpression())
+        if len(ctx.children) == 1:
+            return rhs, rhs_ptr
+        else:
+            lhs, _ = self.visit(ctx.andExpression())
+            return self.builder.and_(lhs, rhs), None
 
     def visitBlockItem(self, ctx:CParser.BlockItemContext):
         """
