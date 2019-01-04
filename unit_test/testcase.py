@@ -2,6 +2,7 @@ _cases = [
     "function.c",
     "initialize.c",
     "pointer.c",
+    "task_3_to_7.c",
 ]
 
 

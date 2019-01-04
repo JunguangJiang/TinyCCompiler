@@ -105,7 +105,7 @@ multiplicativeExpression
 additiveExpression
     :   multiplicativeExpression
     |   additiveExpression '+' multiplicativeExpression
-    |   additiveExpression '-' multiplicativeExpression
+    |   additiveExpression '-' multiplicativeExpressionff
     ;
 
 shiftExpression
