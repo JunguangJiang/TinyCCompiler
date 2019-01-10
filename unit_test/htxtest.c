@@ -7,10 +7,13 @@ int main(){
         printf("%d\n", a);
         a--;
     }while(a>2);
-    int b=1;
-    printf("%d\n", b);
-    printf("%d\n", !b);
-    printf("%d\n", !!b);
-    printf("%d\n", !!!b);
+    int b=8;
+    printf("b=%d\n", b);
+    printf("!b=%d\n", !b);
+    printf("!!b=%d\n", !!b);
+    printf("!!!b=%d\n", !!!b);
+    printf("!!!!b=%d\n", !!!!b);
+    printf("~b=%d\n", ~b);
+    printf("~~b=%d\n", ~~b);
     return 0;
 }

@@ -397,14 +397,29 @@ class TinyCGenerator(CVisitor):
                 return res, None
             elif op == '!':
                 origin = TinyCTypes.cast_type(self.builder, TinyCTypes.int, rhs, ctx)
-                one = TinyCTypes.int(1)
-                res = self.builder.sub(one, origin)
+                zero = TinyCTypes.int(0)
+                res = self.builder.icmp_signed("==", zero, origin)
+                print('=====',res)
+                print('-------', res.flags)
+
+                print('-------', res.name)
+
+                print('-------', res.metadata)
+
+                print('-------', res.operands)
+
+                print('-------', res.get_reference())
+                res = self.builder.zext(res, TinyCTypes.int)
+                print('-------', res.type)
                 return res, None
             elif op == '~':
-                origin = TinyCTypes.cast_type(self.builder, TinyCTypes.int, rhs, ctx)
+                if TinyCTypes.is_int(rhs.type):
+                    res = self.builder.not_(rhs)
+                    return res, None
+                else:
+                    raise SemanticError(ctx=ctx, msg="Wrong type argument to bit-complement.")
             else:
-                # TODO 12 完善一元运算表达式
-                raise NotImplementedError("! and ~ not finished")
+                raise SemanticError(ctx=ctx, msg="Should not reach here.")
         else:
             # TODO 12 完善一元运算表达式
             raise NotImplementedError("visitUnaryExpression not finished yet.")

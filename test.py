@@ -91,15 +91,14 @@ if __name__ == '__main__':
         test_file(filename=sys.argv[1], print_exception=True)
     else:
         test_files(filenames=unit_test.testcase.cases(), print_exception=False)
-    '''
-    if True:
-        # if sys.argv[1] == "unit":  # 运行单元测试文件
-        if True:
+
+'''
+if __name__ == '__main__':
+    if len(sys.argv) == 2:
+        if sys.argv[1] == "unit":  # 运行单元测试文件
             test_files(filenames=unit_test.testcase.cases(), print_exception=False, is_unit=True)
         else:  # 运行某个特定的C文件进行测试
             test_file(filename=sys.argv[1], print_exception=True)
     else:  # 运行测试文件
         test_files(filenames=test.testcase.cases(), print_exception=False, is_unit=False)
-        '''
-
-
+'''
