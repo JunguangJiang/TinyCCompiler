@@ -75,7 +75,6 @@ def unit_test_file(filename):
     :param filename:
     :return: 是否正确编译与执行
     """
-    #todo htx 改回来
     os.system("python test.py " + filename + " > " + "unit_test/temp.txt")
     if filecmp.cmp(filename.split('.')[0]+".txt", "unit_test/temp.txt"):
         return True
@@ -87,15 +86,6 @@ def unit_test_file(filename):
 
 
 if __name__ == '__main__':
-    #todo htx改回来
-    #if len(sys.argv) == 2:
-    if len(sys.argv) == 2:
-        test_file(filename=sys.argv[1], print_exception=True)
-    else:
-        test_files(filenames=unit_test.testcase.cases(), print_exception=False)
-
-'''
-if __name__ == '__main__':
     if len(sys.argv) == 2:
         if sys.argv[1] == "unit":  # 运行单元测试文件
             test_files(filenames=unit_test.testcase.cases(), print_exception=False, is_unit=True)
@@ -103,4 +93,4 @@ if __name__ == '__main__':
             test_file(filename=sys.argv[1], print_exception=True)
     else:  # 运行测试文件
         test_files(filenames=test.testcase.cases(), print_exception=False, is_unit=False)
-'''
+

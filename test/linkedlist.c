@@ -1,30 +1,31 @@
+int nullptr = 0;
 struct Node
 {
     int data;
-    Node* next;
+    struct Node* next;
 };
-void addNode(Node* pre, Node* next)
+void addNode(struct Node* pre, struct Node* next)
 {
     pre->next = next;
 }
 int main()
 {
-    Node n1, n2, n3;
+    struct Node n1, n2, n3;
     n1.data = 1;
-    n1.next = 0;
+    n1.next = nullptr;
     n2.data = 2;
-    n2.next = 0;
+    n2.next = nullptr;
     n3.data = 3;
-    n3.next = 0;
+    n3.next = nullptr;
     addNode(&n1, &n2);
     addNode(&n2, &n3);
 
-    Node* head = n1;
-    Node* cur = head;
+    struct Node* head = &n1;
+    struct Node* cur = head;
     do
     {
-        cur = cur->next;
         printf("data=%d\n", cur->data);
-    }while(cur!=0);
+        cur = cur->next;
+    }while(cur!=nullptr);
     return 0;
 }

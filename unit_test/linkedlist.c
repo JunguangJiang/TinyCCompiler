@@ -1,35 +1,31 @@
+int nullptr = 0;
 struct Node
 {
-    int num;
-    double price;
-    int *ip;
+    int data;
     struct Node* next;
-}n,*np;
+};
+void addNode(struct Node* pre, struct Node* next)
+{
+    pre->next = next;
+}
 int main()
 {
-    struct Node n2;
-    n.num = 1;
-    int *a=&(n.num);
-    printf("-------------------\n");
-    printf("%d\n", ++n.num);
-    printf("%d\n", ++(*a));
-    printf("%d\n", n.num);
-    n2.num=n.num*n.num;
-    printf("%d\n", n2.num);
-    struct Node* n3;
-    n3=&n2;
-    printf("%d\n", n3->num);
-    int aa=2;
-    n3->ip = &aa;
-    printf("%d\n", *n2.ip);
-    n.next = &n2;
-    printf("%d\n", n.next->num);
-    //printf("%d\n", n2.num);
-    //Node n1;
-    //n1.num = 11;
-    //n1.price = 5.2;
-    //Node* np = &n1;
-    //printf("%d\n", np->num);
-    //printf("%d\n", np->price);
+    struct Node n1, n2, n3;
+    n1.data = 1;
+    n1.next = nullptr;
+    n2.data = 2;
+    n2.next = nullptr;
+    n3.data = 3;
+    n3.next = nullptr;
+    addNode(&n1, &n2);
+    addNode(&n2, &n3);
+
+    struct Node* head = &n1;
+    struct Node* cur = head;
+    do
+    {
+        printf("data=%d\n", cur->data);
+        cur = cur->next;
+    }while(cur!=nullptr);
     return 0;
 }

@@ -2,7 +2,8 @@
 _cases = [
     "palindrome_en.c",
     "arithmetic_en.c",
-    "KMP.c"
+    "KMP.c",
+    "linkedlist.c"
 ]
 
 

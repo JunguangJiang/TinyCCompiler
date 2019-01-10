@@ -623,50 +623,19 @@ class TinyCGenerator(CVisitor):
                 self.builder.store(res, lhs_ptr)
                 return lhs, lhs_ptr
             elif op == '.':
-                # TODO 实现结构体时需要实现.和->
-                '''
-                print('>>>>>>>>>>>>>>>')
-                print(lhs)
-                print(type(lhs.type))
-                print(lhs.name)
-                print(lhs_ptr)
-                print(type(lhs_ptr.type))
-                print(type(lhs_ptr.value_type))
-                print(lhs_ptr.name)
-                print('<<<<<<<<<<<<<<')'''
                 ele_name = ctx.Identifier().getText()
-                '''
-                print(lhs_ptr.value_type.name)
-                print(lhs_ptr.value_type)
-                '''
-                print('==============')
-                print(lhs_ptr.type.pointee.name)
-                print(lhs_ptr)
-                print(type(lhs_ptr.type))
-                #target_name = lhs_ptr.value_type.name
                 target_name = lhs_ptr.type.pointee.name
-                print("target_name="+target_name)
-                print("============")
                 array_index = self.struct_reflection[target_name][ele_name]['index']
                 array_index = ir.Constant(TinyCTypes.int, array_index)
                 zero = ir.Constant(TinyCTypes.int, 0)
                 array_indices = [zero, array_index]
                 ptr = self.builder.gep(lhs_ptr, array_indices)
-                print('[[[[[[[[[[[[[[[')
-                print(ptr)
-                print(ptr.type)
-                print(type(ptr.type))
                 return self.builder.load(ptr), ptr
             else:
+                # ->
                 ele_name = ctx.Identifier().getText()
                 target_name = lhs.type.pointee.name
-                print('-=-=-=-=-=-=')
-                print(type(lhs.type.pointee))
                 if type(lhs.type.pointee) != ir.IdentifiedStructType:
-                    print("OVER")
-                    print(type(lhs.type.pointee))
-                    print(ir.IdentifiedStructType)
-                    print("OOOO")
                     raise SemanticError(ctx=ctx, msg="Illegal operation on -> operator.")
                 array_index = self.struct_reflection[target_name][ele_name]['index']
                 array_index = ir.Constant(TinyCTypes.int, array_index)
@@ -1125,10 +1094,6 @@ class TinyCGenerator(CVisitor):
             lhs, _ = self.visit(ctx.children[0])
             op = ctx.children[1].getText()
             converted_target = lhs.type
-            print('aaaaaaaaaaaaaaaaa')
-            print(type(lhs.type))
-            print(type(rhs.type))
-            print('aaaaaaaaa')
             if type(lhs.type) == ir.PointerType and type(rhs.type) == ir.IntType:
                 converted_target = TinyCTypes.int
                 converted_rhs = rhs
