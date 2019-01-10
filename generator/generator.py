@@ -6,12 +6,14 @@ import llvmlite.ir as ir
 from generator.types import TinyCTypes
 from generator.util import *
 from generator.errors import *
+from generator.symbol_table import SymbolTable, RedefinitionError
 
 
 class TinyCGenerator(CVisitor):
     def __init__(self, error_listener=TinyCErrorListener()):
         self.module = ir.Module()
-        self.local_vars = {}  # 局部变量
+        self.builder = ir.IRBuilder()
+        self.symbol_table = SymbolTable()  # 符号表
         self.continue_block = None  # 当调用continue时应该跳转到的语句块
         self.break_block = None  # 当调用break时应该跳转到的语句块
         self.switch_context = None  # TODO
@@ -25,13 +27,13 @@ class TinyCGenerator(CVisitor):
         """引入printf函数"""
         printf_type = ir.FunctionType(TinyCTypes.int, (ir.PointerType(TinyCTypes.char),), var_arg=True)
         printf_func = ir.Function(self.module, printf_type, "printf")
-        self.local_vars["printf"] = printf_func
+        self.symbol_table["printf"] = printf_func
 
     def emit_exit(self):
         """引入exit函数"""
         exit_type = ir.FunctionType(TinyCTypes.void, (TinyCTypes.int, ), var_arg=False)
         exit_func = ir.Function(self.module, exit_type, "exit")
-        self.local_vars["exit"] = exit_func
+        self.symbol_table["exit"] = exit_func
 
     def visitDeclaration(self, ctx:CParser.DeclarationContext):
         """
@@ -50,7 +52,8 @@ class TinyCGenerator(CVisitor):
             if declaratorList is not None and len(declaratorList) == 3:  #说明是函数声明
                 func_name, function_type, arg_names = declaratorList  # 获得函数名、函数类型、参数名列表
                 llvm_function = ir.Function(self.module, function_type, name=func_name)
-                self.local_vars[func_name] = llvm_function
+                if func_name not in self.symbol_table:  # 允许函数重复声明
+                    self.symbol_table[func_name] = llvm_function
 
     def visitFunctionDefinition(self, ctx:CParser.FunctionDefinitionContext):
         """
@@ -62,16 +65,20 @@ class TinyCGenerator(CVisitor):
         ret_type = self.visit(ctx.declarationSpecifiers())  #函数返回值的类型
         self.current_base_type = ret_type
         func_name, function_type, arg_names = self.visit(ctx.declarator())  # 获得函数名、函数类型、参数名列表
-        if func_name in self.local_vars:
+        if func_name in self.symbol_table:
             # TODO 此处尚未检查函数定义和声明是否参数一致
-            llvm_function = self.local_vars[func_name]
+            llvm_function = self.symbol_table[func_name]
         else:
             llvm_function = ir.Function(self.module, function_type, name=func_name)
-            self.local_vars[func_name] = llvm_function
+            self.symbol_table[func_name] = llvm_function
         self.builder = ir.IRBuilder(llvm_function.append_basic_block(name="entry"))
 
-        for arg_name, llvm_arg in zip(arg_names, llvm_function.args):
-            self.local_vars[arg_name] = llvm_arg
+        self.symbol_table.enter_scope()
+        try:
+            for arg_name, llvm_arg in zip(arg_names, llvm_function.args):
+                self.symbol_table[arg_name] = llvm_arg
+        except RedefinitionError as e:
+            raise SemanticError(msg="Redefinition local variable {}".format(arg_name), ctx=ctx)
 
         self.continue_block = None
         self.break_block = None
@@ -80,7 +87,7 @@ class TinyCGenerator(CVisitor):
 
         if function_type.return_type == TinyCTypes.void:
             self.builder.ret_void()
-
+        self.symbol_table.exit_scope()
         self.is_global = True
 
     def visitTypeSpecifier(self, ctx:CParser.TypeSpecifierContext):
@@ -499,8 +506,8 @@ class TinyCGenerator(CVisitor):
         else:
             text = ctx.getText()
             if ctx.Identifier():
-                if text in self.local_vars:
-                    var = self.local_vars[text]
+                if text in self.symbol_table:
+                    var = self.symbol_table[text]
                     if type(var) in [ir.Argument, ir.Function]:
                         var_val = var
                     else:
@@ -645,16 +652,18 @@ class TinyCGenerator(CVisitor):
                     converted_val = TinyCTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
                 # TODO 目前多维数组初始化必须使用嵌套的方式，并且无法自动补零
                 # TODO 数组变量初始化时，未能自动进行类型转换
-
-            if self.is_global:  #如果是全局变量
-                self.local_vars[var_name] = ir.GlobalVariable(self.module, var_type, name=var_name)
-                self.local_vars[var_name].linkage = "internal"
-                if len(ctx.children) == 3:
-                    self.local_vars[var_name].initializer = converted_val
-            else:  #如果是局部变量
-                self.local_vars[var_name] = self.builder.alloca(var_type)
-                if len(ctx.children) == 3:
-                    self.builder.store(converted_val, self.local_vars[var_name])
+            try:
+                if self.is_global:  #如果是全局变量
+                    self.symbol_table[var_name] = ir.GlobalVariable(self.module, var_type, name=var_name)
+                    self.symbol_table[var_name].linkage = "internal"
+                    if len(ctx.children) == 3:
+                        self.symbol_table[var_name].initializer = converted_val
+                else:  #如果是局部变量
+                    self.symbol_table[var_name] = self.builder.alloca(var_type)
+                    if len(ctx.children) == 3:
+                        self.builder.store(converted_val, self.symbol_table[var_name])
+            except RedefinitionError as e:
+                raise SemanticError(msg="redefinition variable {}".format(var_name), ctx=ctx)
 
     def visitInitializer(self, ctx:CParser.InitializerContext):
         """
@@ -698,6 +707,7 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
+        self.symbol_table.enter_scope()
         name_prefix = self.builder.block.name
         cond_block = self.builder.append_basic_block(name=name_prefix+".loop_cond")  # 条件判断语句块，例如i<3
         loop_block = self.builder.append_basic_block(name=name_prefix+".loop_body")  # 循环语句块
@@ -742,6 +752,7 @@ class TinyCGenerator(CVisitor):
         self.builder.position_at_start(end_block)
         self.continue_block = last_continue
         self.break_block = last_break
+        self.symbol_table.exit_scope()
 
     def visitForCondition(self, ctx:CParser.ForConditionContext):
         """
@@ -802,6 +813,7 @@ class TinyCGenerator(CVisitor):
             cond_val, _ = self.visit(ctx.expression())
             converted_cond_val = TinyCTypes.cast_type(self.builder, target_type=TinyCTypes.bool, value=cond_val, ctx=ctx)
             statements = ctx.statement()
+            self.symbol_table.enter_scope()
             if len(statements) == 2:  # 存在else分支
                 with self.builder.if_else(converted_cond_val) as (then, otherwise):
                     with then:
@@ -811,6 +823,7 @@ class TinyCGenerator(CVisitor):
             else:  # 只有if分支
                 with self.builder.if_then(converted_cond_val):
                     self.visit(statements[0])
+            self.symbol_table.exit_scope()
         else:
             name_prefix = self.builder.block.name
             start_block = self.builder.block

@@ -8,3 +8,5 @@ inner function called with i=64
 inner function called with i=8
 inner function called with i=1
 inner function called with i=0
+function decalaration: 3*5=15
+extern function decalaration test:abs(-4)=4
