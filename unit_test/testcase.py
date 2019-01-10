@@ -3,6 +3,8 @@ _cases = [
     "initialize.c",
     "pointer.c",
     "task_3_to_7.c",
+    "loop.c",
+    "select.c",
 ]
 
 

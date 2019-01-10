@@ -45,7 +45,12 @@ class TinyCGenerator(CVisitor):
         var_type = self.visit(ctx.declarationSpecifiers())  #类型
         self.current_base_type = var_type
         if len(ctx.children) == 3:
-            self.visit(ctx.initDeclaratorList())
+            declaratorList = self.visit(ctx.initDeclaratorList())
+
+            if declaratorList is not None and len(declaratorList) == 3:  #说明是函数声明
+                func_name, function_type, arg_names = declaratorList  # 获得函数名、函数类型、参数名列表
+                llvm_function = ir.Function(self.module, function_type, name=func_name)
+                self.local_vars[func_name] = llvm_function
 
     def visitFunctionDefinition(self, ctx:CParser.FunctionDefinitionContext):
         """
@@ -57,10 +62,13 @@ class TinyCGenerator(CVisitor):
         ret_type = self.visit(ctx.declarationSpecifiers())  #函数返回值的类型
         self.current_base_type = ret_type
         func_name, function_type, arg_names = self.visit(ctx.declarator())  # 获得函数名、函数类型、参数名列表
-        llvm_function = ir.Function(self.module, function_type, name=func_name)
+        if func_name in self.local_vars:
+            # TODO 此处尚未检查函数定义和声明是否参数一致
+            llvm_function = self.local_vars[func_name]
+        else:
+            llvm_function = ir.Function(self.module, function_type, name=func_name)
+            self.local_vars[func_name] = llvm_function
         self.builder = ir.IRBuilder(llvm_function.append_basic_block(name="entry"))
-
-        self.local_vars[func_name] = llvm_function
 
         for arg_name, llvm_arg in zip(arg_names, llvm_function.args):
             self.local_vars[arg_name] = llvm_arg
@@ -598,6 +606,20 @@ class TinyCGenerator(CVisitor):
             else:
                 raise SemanticError(ctx=ctx, msg="Illegal operation: "+str(lhs)+op+str(rhs))
 
+    def visitInitDeclaratorList(self, ctx:CParser.InitDeclaratorListContext):
+        """
+        initDeclaratorList
+            :   initDeclarator
+            |   initDeclaratorList ',' initDeclarator
+            ;
+        :param ctx:
+        :return:
+        """
+        if len(ctx.children) == 3:
+            self.visit(ctx.initDeclaratorList())
+        declarator = self.visit(ctx.initDeclarator())
+        return declarator
+
     def visitInitDeclarator(self, ctx:CParser.InitDeclaratorContext):
         """
         initDeclarator
@@ -607,27 +629,32 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
-        var_name, var_type = self.visit(ctx.declarator())
-        if len(ctx.children) == 3:
-            init_val = self.visit(ctx.initializer())
-            if isinstance(init_val, list):  # 如果初始值是一个列表
-                converted_val = ir.Constant(var_type, init_val)
-            else:  # 如果初始值是一个值
-                if isinstance(var_type, ir.PointerType) and isinstance(init_val.type, ir.ArrayType) and var_type.pointee == init_val.type.element:
-                    var_type = init_val.type  # 数组赋值给指针，不需要进行强制转换
-                converted_val = TinyCTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
-            # TODO 目前多维数组初始化必须使用嵌套的方式，并且无法自动补零
-            # TODO 数组变量初始化时，未能自动进行类型转换
+        declarator = self.visit(ctx.declarator())
+        if len(declarator) == 3:  # 函数定义的变量列表
+            return declarator
+        else:
+            var_name, var_type = declarator
 
-        if self.is_global:  #如果是全局变量
-            self.local_vars[var_name] = ir.GlobalVariable(self.module, var_type, name=var_name)
-            self.local_vars[var_name].linkage = "internal"
             if len(ctx.children) == 3:
-                self.local_vars[var_name].initializer = converted_val
-        else:  #如果是局部变量
-            self.local_vars[var_name] = self.builder.alloca(var_type)
-            if len(ctx.children) == 3:
-                self.builder.store(converted_val, self.local_vars[var_name])
+                init_val = self.visit(ctx.initializer())
+                if isinstance(init_val, list):  # 如果初始值是一个列表
+                    converted_val = ir.Constant(var_type, init_val)
+                else:  # 如果初始值是一个值
+                    if isinstance(var_type, ir.PointerType) and isinstance(init_val.type, ir.ArrayType) and var_type.pointee == init_val.type.element:
+                        var_type = init_val.type  # 数组赋值给指针，不需要进行强制转换
+                    converted_val = TinyCTypes.cast_type(self.builder, value=init_val, target_type=var_type, ctx=ctx)
+                # TODO 目前多维数组初始化必须使用嵌套的方式，并且无法自动补零
+                # TODO 数组变量初始化时，未能自动进行类型转换
+
+            if self.is_global:  #如果是全局变量
+                self.local_vars[var_name] = ir.GlobalVariable(self.module, var_type, name=var_name)
+                self.local_vars[var_name].linkage = "internal"
+                if len(ctx.children) == 3:
+                    self.local_vars[var_name].initializer = converted_val
+            else:  #如果是局部变量
+                self.local_vars[var_name] = self.builder.alloca(var_type)
+                if len(ctx.children) == 3:
+                    self.builder.store(converted_val, self.local_vars[var_name])
 
     def visitInitializer(self, ctx:CParser.InitializerContext):
         """

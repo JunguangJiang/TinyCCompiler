@@ -3,3 +3,8 @@ func2 called with i=3.
 func3 called with s=Hello.
 func4 called with i=4.50 and c=a
 func5 called with array=[3,4,5,6,7,8,9,10,] and n=8
+outter function called with j=8
+inner function called with i=64
+inner function called with i=8
+inner function called with i=1
+inner function called with i=0
