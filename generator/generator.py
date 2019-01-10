@@ -395,6 +395,13 @@ class TinyCGenerator(CVisitor):
                 zero = ir.Constant(rhs.type, 0)
                 res = self.builder.sub(zero, rhs)
                 return res, None
+            elif op == '!':
+                origin = TinyCTypes.cast_type(self.builder, TinyCTypes.int, rhs, ctx)
+                one = TinyCTypes.int(1)
+                res = self.builder.sub(one, origin)
+                return res, None
+            elif op == '~':
+                origin = TinyCTypes.cast_type(self.builder, TinyCTypes.int, rhs, ctx)
             else:
                 # TODO 12 完善一元运算表达式
                 raise NotImplementedError("! and ~ not finished")
@@ -672,6 +679,7 @@ class TinyCGenerator(CVisitor):
         :return:
         """
         name_prefix = self.builder.block.name
+        do_block = self.builder.append_basic_block(name=name_prefix + "loop_do")  # do语句块，先跑一遍
         cond_block = self.builder.append_basic_block(name=name_prefix+".loop_cond")  # 条件判断语句块，例如i<3
         loop_block = self.builder.append_basic_block(name=name_prefix+".loop_body")  # 循环语句块
         end_block = self.builder.append_basic_block(name=name_prefix+".loop_end")  # 循环结束后的语句块
@@ -689,10 +697,14 @@ class TinyCGenerator(CVisitor):
             cond_expression = ctx.expression()
         elif iteration_type == "for":  # for循环
             cond_expression, update_expression = self.visit(ctx.forCondition())
-        else:  # do-while循环
-            # TODO 11 do-while循环
-            raise NotImplementedError("do while")
-
+        elif iteration_type == "do":  # do while
+            cond_expression = ctx.expression()
+        else:
+            raise SemanticError(ctx=ctx, msg="Cannot recognize loop form!")
+        self.builder.branch(do_block)
+        self.builder.position_at_start(do_block)
+        if iteration_type == "do":
+            self.visit(ctx.statement())
         self.builder.branch(cond_block)
         self.builder.position_at_start(cond_block)
         if cond_expression:

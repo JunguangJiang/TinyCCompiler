@@ -123,4 +123,3 @@ parser/*.java
 *.out
 reference/*
 unit_test/temp.txt
-

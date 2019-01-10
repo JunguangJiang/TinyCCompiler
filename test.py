@@ -5,7 +5,7 @@ import test.testcase
 import unit_test.testcase
 import os
 import filecmp
-
+import traceback
 
 def test_file(filename, print_exception=True):
     """
@@ -36,6 +36,7 @@ def test_file(filename, print_exception=True):
                 execute_result = execute(output_filename)
             except Exception as e:
                 print("execute", output_filename, "failed.")
+                traceback.print_exc()
                 return False
 
         return True
@@ -72,6 +73,7 @@ def unit_test_file(filename):
     :param filename:
     :return: 是否正确编译与执行
     """
+    #todo htx 改回来
     os.system("python test.py " + filename + " > " + "unit_test/temp.txt")
     if filecmp.cmp(filename.split('.')[0]+".txt", "unit_test/temp.txt"):
         return True
@@ -83,12 +85,21 @@ def unit_test_file(filename):
 
 
 if __name__ == '__main__':
+    #todo htx改回来
+    #if len(sys.argv) == 2:
     if len(sys.argv) == 2:
-        if sys.argv[1] == "unit":  # 运行单元测试文件
+        test_file(filename=sys.argv[1], print_exception=True)
+    else:
+        test_files(filenames=unit_test.testcase.cases(), print_exception=False)
+    '''
+    if True:
+        # if sys.argv[1] == "unit":  # 运行单元测试文件
+        if True:
             test_files(filenames=unit_test.testcase.cases(), print_exception=False, is_unit=True)
         else:  # 运行某个特定的C文件进行测试
             test_file(filename=sys.argv[1], print_exception=True)
     else:  # 运行测试文件
         test_files(filenames=test.testcase.cases(), print_exception=False, is_unit=False)
+        '''
 
 

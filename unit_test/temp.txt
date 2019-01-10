@@ -1,45 +1,10 @@
-=====Start test operator=====
-a = 1
-a += 1, a = 2
-a -= 1, a = 1
-a *= 2, a = 2
-a /= 2, a = 1
-a = 7, a %= 4, a = 3
-a <<= 1, a = 6
-a >>= 1, a = 3
-a &= 5, a = 1
-a |= 4, a = 5
-a ^= 3, a = 6
-
-=====Start test conditional=====
-(2 < 3 ? 2 : 3) is 2
-(2 > 3 ? 2 : 3) is 3
-
-=====Start test assignment=====
-a = 1
-a = a + 1, a = 2
-a = a - 1, a = 1
-a = a * 2, a = 2
-a = a / 2, a = 1
-a = 7, a %= 4, a = 3
-a = a << 1, a = 6
-a = a >> 3, a = 3
-a = a & 3, a = 1
-a = a | 3, a = 5
-a = a ^ 3, a = 6
-
-=====Start test logical and or=====
-a = 0
-(2 < 3 && (a += 1)) is false
-and now a = 0
-((a += 1) && (3 > 2 || (a += 1))) is true
-and now a = 1
-
-=====Start test switch=====
-should be 2
-should be 2
-should be 4
-should be 4
-should be 5
-should be 6
-
+do{printf("%d\n",a);}while(a-->-1);
+[<antlr4.tree.Tree.TerminalNodeImpl object at 0x000001A3843F30F0>, <parser_.CParser.CParser.StatementContext object at 0x000001A3843F3F28>, <antlr4.tree.Tree.TerminalNodeImpl object at 0x000001A3843F9860>, <antlr4.tree.Tree.TerminalNodeImpl object at 0x000001A3843F98D0>, <parser_.CParser.CParser.ExpressionContext object at 0x000001A3843F9908>, <antlr4.tree.Tree.TerminalNodeImpl object at 0x000001A3844028D0>, <antlr4.tree.Tree.TerminalNodeImpl object at 0x000001A384402E10>]
+<class 'antlr4.tree.Tree.TerminalNodeImpl'>
+[1191 1091 1155 1149 146 1140 1287 1275 1266 1260]
+123
+%"entry.loop_end.loop_cond" = entry.loop_end.loop_cond:
+%"entry.loop_end.loop_body" = entry.loop_end.loop_body:
+%"entry.loop_end.loop_update" = entry.loop_end.loop_update:
+1
+0
