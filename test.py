@@ -22,10 +22,12 @@ def test_file(filename, print_exception=True):
         try:
             generate_result = generate(input_filename=filename, output_filename=output_filename)
         except Exception:
+            traceback.print_exc()
             print("generate", filename, "failed.")
             return False
 
     if not generate_result:
+        traceback.print_exc()
         print("generate", filename, "failed.")
         return False
     else:
