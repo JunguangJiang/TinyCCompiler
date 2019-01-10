@@ -1,27 +1,5 @@
 #include <stdio.h>
 
-int test_switch(int a) {
-	int b;
-	switch (a) {
-	case 1:
-		b = 1;
-	case 2:
-		b = 2;
-		break;
-	case 3:
-	case 4:
-		b = 4;
-		break;
-	case 5:
-		b = 5;
-		break;
-	default:
-		b = 6;
-		break;
-	}
-	return b;
-}
-
 void test_assignment() {
 	int a;
 	printf("=====Start test assignment=====\n");
@@ -101,12 +79,5 @@ int main() {
 	test_conditional();
 	test_assignment();
 	test_logical_and_or();
-	printf("=====Start test switch=====\n");
-	printf("should be %d\n", test_switch(1));
-	printf("should be %d\n", test_switch(2));
-	printf("should be %d\n", test_switch(3));
-	printf("should be %d\n", test_switch(4));
-	printf("should be %d\n", test_switch(5));
-	printf("should be %d\n\n", test_switch(6));
 	return 0;
 }
