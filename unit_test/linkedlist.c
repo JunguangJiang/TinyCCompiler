@@ -3,6 +3,7 @@ struct Node
     int num;
     double price;
     int *ip;
+    struct Node* next;
 }n,*np;
 int main()
 {
@@ -21,6 +22,8 @@ int main()
     int aa=2;
     n3->ip = &aa;
     printf("%d\n", *n2.ip);
+    n.next = &n2;
+    printf("%d\n", n.next->num);
     //printf("%d\n", n2.num);
     //Node n1;
     //n1.num = 11;

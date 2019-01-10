@@ -24,6 +24,7 @@ class TinyCGenerator(CVisitor):
         self.error_listener = error_listener  #错误监听器
         self.global_context = ir.global_context
         self.struct_reflection = {}
+        self.is_defining_struct = ''
 
     def emit_printf(self):
         """引入printf函数"""
@@ -210,8 +211,9 @@ class TinyCGenerator(CVisitor):
                         # 重定义
                         raise SemanticError(ctx=ctx, msg="Struct" + ctx.Identifier().getText() + "Redefinition")
                     else:
-                        tmp_list = self.visit(ctx.structDeclarationList())
                         struct_name = ctx.Identifier().getText()
+                        self.is_defining_struct = struct_name
+                        tmp_list = self.visit(ctx.structDeclarationList())
                         self.struct_reflection[struct_name] = {}
                         index = 0
                         ele_list = []
@@ -224,6 +226,7 @@ class TinyCGenerator(CVisitor):
                             index = index + 1
                         new_struct = self.global_context.get_identified_type(name=struct_name)
                         new_struct.set_body(*ele_list)
+                        self.is_defining_struct = ''
                         return new_struct
                 else:
                     raise NotImplementedError("Anonymous struct is not supported yet.")
@@ -232,9 +235,9 @@ class TinyCGenerator(CVisitor):
         else:  # 结构实体的定义
             s_or_u = self.visit(ctx.structOrUnion())
             if s_or_u == 'struct':  # 结构
-                if ctx.Identifier().getText() in self.struct_reflection.keys():
-                    # 已有定义
-                    struct_name = ctx.Identifier().getText()
+                struct_name = ctx.Identifier().getText()
+                if (ctx.Identifier().getText() in self.struct_reflection.keys()) or self.is_defining_struct == struct_name:
+                    # 已有定义或者正在定义该结构
                     new_struct = self.global_context.get_identified_type(name=struct_name)
                     return new_struct
                 else:

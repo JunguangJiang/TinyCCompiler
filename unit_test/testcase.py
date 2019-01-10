@@ -1,6 +1,5 @@
 _cases = [
-    "htxtest.c",
-    "linkedlist.c"
+    "linkedlist2.c"
 ]
 
 '''"
