@@ -656,7 +656,21 @@ class TinyCGenerator(CVisitor):
                 return self.builder.load(ptr), ptr
             else:
                 ele_name = ctx.Identifier().getText()
-                raise NotImplementedError("-> not finished yet.")
+                target_name = lhs.type.pointee.name
+                print('-=-=-=-=-=-=')
+                print(type(lhs.type.pointee))
+                if type(lhs.type.pointee) != ir.IdentifiedStructType:
+                    print("OVER")
+                    print(type(lhs.type.pointee))
+                    print(ir.IdentifiedStructType)
+                    print("OOOO")
+                    raise SemanticError(ctx=ctx, msg="Illegal operation on -> operator.")
+                array_index = self.struct_reflection[target_name][ele_name]['index']
+                array_index = ir.Constant(TinyCTypes.int, array_index)
+                zero = ir.Constant(TinyCTypes.int, 0)
+                array_indices = [zero, array_index]
+                ptr = self.builder.gep(lhs, array_indices)
+                return self.builder.load(ptr), ptr
         raise NotImplementedError("visitPostfixExpression not finished yet")
 
     def visitPrimaryExpression(self, ctx:CParser.PrimaryExpressionContext):

@@ -2,7 +2,7 @@ struct Node
 {
     int num;
     double price;
-    struct Node* next;
+    int *ip;
 }n,*np;
 int main()
 {
@@ -17,7 +17,10 @@ int main()
     printf("%d\n", n2.num);
     struct Node* n3;
     n3=&n2;
-    printf("%d\n", (*n3).num);
+    printf("%d\n", n3->num);
+    int aa=2;
+    n3->ip = &aa;
+    printf("%d\n", *n2.ip);
     //printf("%d\n", n2.num);
     //Node n1;
     //n1.num = 11;
