@@ -20,12 +20,12 @@ int main()
     addNode(&n1, &n2);
     addNode(&n2, &n3);
 
-    Node* head = n1;
-    Node* cur = head;
+    struct Node* head = &n1;
+    struct Node* cur = head;
     do
     {
-        cur = cur->next;
         printf("data=%d\n", cur->data);
+        cur = cur->next;
     }while(cur!=nullptr);
     return 0;
 }

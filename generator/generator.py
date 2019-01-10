@@ -1125,7 +1125,16 @@ class TinyCGenerator(CVisitor):
             lhs, _ = self.visit(ctx.children[0])
             op = ctx.children[1].getText()
             converted_target = lhs.type
-            converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
+            print('aaaaaaaaaaaaaaaaa')
+            print(type(lhs.type))
+            print(type(rhs.type))
+            print('aaaaaaaaa')
+            if type(lhs.type) == ir.PointerType and type(rhs.type) == ir.IntType:
+                converted_target = TinyCTypes.int
+                converted_rhs = rhs
+                lhs = TinyCTypes.cast_type(self.builder, value=lhs, target_type=TinyCTypes.int, ctx=ctx)
+            else:
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
             if TinyCTypes.is_int(converted_target):
                 return self.builder.icmp_signed(cmpop=op, lhs=lhs, rhs=converted_rhs), None
             elif TinyCTypes.is_float(converted_target):

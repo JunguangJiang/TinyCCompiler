@@ -104,6 +104,8 @@ class TinyCTypes(object):
                 return builder.sitofp(value, target_type)
             elif target_type == cls.bool:
                 return builder.icmp_unsigned('!=', value, cls.bool(0))
+            elif type(target_type) == ir.PointerType:  #转成指针
+                return builder.inttoptr(value, target_type)
 
         elif cls.is_float(value.type):  #从浮点数
             if cls.is_float(target_type):  #转成浮点数
@@ -113,7 +115,9 @@ class TinyCTypes(object):
                     return builder.fptrunc(value, cls.float)
             elif cls.is_int(target_type):  #转成整数
                 return builder.fptosi(value, target_type)
-
+        elif type(value.type) == ir.PointerType and type(target_type) == ir.IntType:
+            # 指针转int
+            return builder.ptrtoint(value, target_type)
         elif type(value.type) == ir.ArrayType and type(target_type) == ir.PointerType \
                 and value.type.element == target_type.pointee:  #数组类型转成指针类型
             zero = ir.Constant(cls.int, 0)
