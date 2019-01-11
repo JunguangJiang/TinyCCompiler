@@ -61,8 +61,9 @@ class TinyCGenerator(CVisitor):
         self.current_base_type = ret_type
         _, func_name, function_type, arg_names = self.visit(ctx.declarator())  # 获得函数名、函数类型、参数名列表
         if func_name in self.symbol_table:
-            # TODO 此处尚未检查函数定义和声明是否参数一致
             llvm_function = self.symbol_table[func_name]
+            if llvm_function.function_type != function_type:
+                raise SemanticError("Function {}'s definition different from its declaration".format(func_name), ctx)
         else:
             llvm_function = ir.Function(self.module, function_type, name=func_name)
             self.symbol_table[func_name] = llvm_function
@@ -289,7 +290,9 @@ class TinyCGenerator(CVisitor):
             :   directDeclarator
             ;
         :param ctx:
-        :return:
+        :return:声明变量的类型，名字name,llvm类型,
+                    如果是变量是函数FUNTION_TYPE，则还会返回所有参数的名字arg_names
+                    否则会返回一个空列表
         """
         old_type, name, old_llvm_type, args = self.visit(ctx.directDeclarator())
         if old_type == self.ARRAY_TYPE:
@@ -323,8 +326,12 @@ class TinyCGenerator(CVisitor):
                     new_llvm_type = ir.PointerType(old_llvm_type)
                     return old_type, name, new_llvm_type, size_list
                 else:  # directDeclarator '[' assignmentExpression ']'
-                    array_size = int(ctx.children[2].getText())
-                    # new_type = ir.ArrayType(element=old_type, count=array_size)
+                    try:
+                        array_size = int(ctx.children[2].getText())
+                    except:
+                        raise SemanticError("Doesn't support array dimension {}".format(ctx.children[2].getText()), ctx)
+                    if array_size <= 0:
+                        raise SemanticError("Array dimension must be possitive!", ctx)
                     size_list.append(array_size)
                     return self.ARRAY_TYPE, name, old_llvm_type, size_list
             elif ctx.children[1].getText() == '(':
@@ -709,8 +716,12 @@ class TinyCGenerator(CVisitor):
             else:
                 self.builder.ret_void()
         elif jump_str == 'continue':
+            if self.continue_block is None:
+                raise SemanticError("continue can not be used here", ctx)
             self.builder.branch(self.continue_block)
         elif jump_str == 'break':
+            if self.break_block is None:
+                raise SemanticError("break can not be used here", ctx)
             self.builder.branch(self.break_block)
         else:
             # TODO 尚未支持goto语句
