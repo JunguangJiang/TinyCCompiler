@@ -1042,7 +1042,9 @@ class TinyCGenerator(CVisitor):
                 pass
             self.builder.position_at_end(cur_block)
         self.switch_context[1] = self.builder.block
+        self.symbol_table.enter_scope()
         self.visit(ctx.statement())
+        self.symbol_table.exit_scope()
         self.switch_context[0].append((label, content_block))
 
     def visitAdditiveExpression(self, ctx:CParser.AdditiveExpressionContext):
