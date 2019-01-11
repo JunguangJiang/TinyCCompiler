@@ -24,6 +24,10 @@ class TinyCGenerator(CVisitor):
         self.struct_reflection = {}
         self.is_defining_struct = ''
 
+    BASE_TYPE=0
+    ARRAY_TYPE=1
+    FUNCTION_TYPE=2
+
     def visitDeclaration(self, ctx:CParser.DeclarationContext):
         """
         declaration
@@ -36,13 +40,15 @@ class TinyCGenerator(CVisitor):
         var_type = self.visit(ctx.declarationSpecifiers())  #类型
         self.current_base_type = var_type
         if len(ctx.children) == 3:
-            declaratorList = self.visit(ctx.initDeclaratorList())
+            init_declarator_list = self.visit(ctx.initDeclaratorList())
 
-            if declaratorList is not None and len(declaratorList) == 3:  #说明是函数声明
-                func_name, function_type, arg_names = declaratorList  # 获得函数名、函数类型、参数名列表
-                llvm_function = ir.Function(self.module, function_type, name=func_name)
-                if func_name not in self.symbol_table:  # 允许函数重复声明
-                    self.symbol_table[func_name] = llvm_function
+            if init_declarator_list is not None:
+                old_type, name, old_llvm_type, args = init_declarator_list
+                if old_type == self.FUNCTION_TYPE:  #说明是函数声明
+                    func_name, function_type = name, old_llvm_type
+                    llvm_function = ir.Function(self.module, function_type, name=func_name)
+                    if func_name not in self.symbol_table:  # 允许函数重复声明
+                        self.symbol_table[func_name] = llvm_function
 
     def visitFunctionDefinition(self, ctx:CParser.FunctionDefinitionContext):
         """
@@ -53,7 +59,7 @@ class TinyCGenerator(CVisitor):
         self.is_global = False
         ret_type = self.visit(ctx.declarationSpecifiers())  #函数返回值的类型
         self.current_base_type = ret_type
-        func_name, function_type, arg_names = self.visit(ctx.declarator())  # 获得函数名、函数类型、参数名列表
+        _, func_name, function_type, arg_names = self.visit(ctx.declarator())  # 获得函数名、函数类型、参数名列表
         if func_name in self.symbol_table:
             # TODO 此处尚未检查函数定义和声明是否参数一致
             llvm_function = self.symbol_table[func_name]
@@ -274,7 +280,7 @@ class TinyCGenerator(CVisitor):
         :return: 声明变量的名字和类型
         """
         self.current_base_type = self.visit(ctx.declarationSpecifiers())
-        arg_name, arg_type = self.visit(ctx.declarator())
+        _, arg_name, arg_type, _ = self.visit(ctx.declarator())
         return arg_name, arg_type
 
     def visitDeclarator(self, ctx:CParser.DeclaratorContext):
@@ -285,7 +291,13 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
-        return self.visit(ctx.directDeclarator())
+        old_type, name, old_llvm_type, args = self.visit(ctx.directDeclarator())
+        if old_type == self.ARRAY_TYPE:
+            for size in reversed(args):
+                old_llvm_type = ir.ArrayType(element=old_llvm_type, count=size)
+            return old_type, name, old_llvm_type, []
+        else:
+            return old_type, name, old_llvm_type, args
 
     def visitDirectDeclarator(self, ctx:CParser.DirectDeclaratorContext):
         """
@@ -297,34 +309,39 @@ class TinyCGenerator(CVisitor):
             |   '(' typeSpecifier? pointer directDeclarator ')' // function pointer like: (__cdecl *f)
             ;
         :param ctx:
-        :return: 声明变量的名字name,类型type,（如果是变量是函数，则还会返回所有参数的名字arg_names)
+        :return: 声明变量的类型，名字name,llvm类型,
+                    如果是变量是函数FUNTION_TYPE，则还会返回所有参数的名字arg_names
+                    如果变量是数组ARRAY_TYPE，会返回数组范围列表
+                    如果变量是普通类型BASE_TYPE,会返回一个空列表
         """
         if len(ctx.children) == 1:  # Identifier
-            return ctx.getText(), self.current_base_type
+            return self.BASE_TYPE, ctx.getText(), self.current_base_type, []
         elif match_rule(ctx.children[0], CParser.RULE_directDeclarator):
-            name, old_type = self.visit(ctx.directDeclarator())
+            old_type, name, old_llvm_type, size_list = self.visit(ctx.directDeclarator())
             if ctx.children[1].getText() == '[':
                 if match_text(ctx.children[2], ']'):  # directDeclarator '[' ']'
-                    new_type = ir.PointerType(old_type)
+                    new_llvm_type = ir.PointerType(old_llvm_type)
+                    return old_type, name, new_llvm_type, size_list
                 else:  # directDeclarator '[' assignmentExpression ']'
                     array_size = int(ctx.children[2].getText())
-                    new_type = ir.ArrayType(element=old_type, count=array_size)
-                return name, new_type
+                    # new_type = ir.ArrayType(element=old_type, count=array_size)
+                    size_list.append(array_size)
+                    return self.ARRAY_TYPE, name, old_llvm_type, size_list
             elif ctx.children[1].getText() == '(':
                 if match_rule(ctx.children[2], CParser.RULE_parameterTypeList):
                     # directDeclarator '(' parameterTypeList ')'
                     (arg_names, arg_types), var_arg = self.visit(ctx.parameterTypeList())  # 获得函数参数的名字列表和类型列表
-                    new_type = ir.FunctionType(old_type, arg_types, var_arg=var_arg)
-                    return name, new_type, arg_names
+                    new_llvm_type = ir.FunctionType(old_llvm_type, arg_types, var_arg=var_arg)
+                    return self.FUNCTION_TYPE, name, new_llvm_type, arg_names
                 elif match_rule(ctx.children[2], CParser.RULE_identifierList):
-                    # TODO directDeclarator '(' identifierList ')' 不知道这个是对应什么C语法
+                    # TODO directDeclarator '(' identifierList ')'
                     raise NotImplementedError("directDeclarator '(' identifierList ')'")
                 else:
                     # directDeclarator '(' ')'
                     arg_names = []
                     arg_types = []
-                    new_type = ir.FunctionType(old_type, arg_types)
-                    return name, new_type, arg_names
+                    new_llvm_type = ir.FunctionType(old_llvm_type, arg_types)
+                    return self.FUNCTION_TYPE, name, new_llvm_type, arg_names
         else:
             # TODO '(' typeSpecifier? pointer directDeclarator ')'
             raise NotImplementedError("'(' typeSpecifier? pointer directDeclarator ')'")
@@ -758,11 +775,11 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
-        declarator = self.visit(ctx.declarator())
-        if len(declarator) == 3:  # 函数定义的变量列表
-            return declarator
+        old_type, name, old_llvm_type, args = self.visit(ctx.declarator())
+        if old_type == self.FUNCTION_TYPE:
+            return old_type, name, old_llvm_type, args
         else:
-            var_name, var_type = declarator
+            var_name, var_type = name, old_llvm_type
             if len(ctx.children) == 3:
                 init_val = self.visit(ctx.initializer())
                 if isinstance(init_val, list):  # 如果初始值是一个列表

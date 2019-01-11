@@ -2,7 +2,7 @@ int printf(const char *format,...);
 
 void array_test_1()
 {
-    int array[4][3] = {
+    int array[3][4] = {
         {1,2,3,4},
         {5,6,7,8},
         {9,11,12,13}
@@ -20,9 +20,9 @@ void array_test_1()
 void char_array_test()
 {
     char c=33;
-    printf("%c", c);
-//    char c[] = "Hello world";
-//    printf("%s\n", c);
+    printf("%c\n", c);
+    char* s = "Hello world";
+    printf("%s\n", s);
 }
 int main()
 {

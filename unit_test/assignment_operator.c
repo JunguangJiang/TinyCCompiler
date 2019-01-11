@@ -64,8 +64,8 @@ void test_conditional() {
 
 void test_logical_and_or() {
 	int a = 0;
-	char t[] = "true";
-	char f[] = "false";
+	char* t = "true";
+	char* f = "false";
 	printf("=====Start test logical and or=====\n");
 	printf("a = %d\n", a);
 	printf("(2 < 3 && (a += 1)) is %s\n", (2 > 3 && (a += 1)) ? t : f);
