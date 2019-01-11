@@ -1,6 +1,6 @@
-//回文检测
-#include <string.h>
-#include <stdio.h>
+//#include <string.h>
+//#include <stdio.h>
+int printf(const char *format,...);
 
 int strlen(char s[])
 {
@@ -9,7 +9,6 @@ int strlen(char s[])
     return i;
 }
 
-////判断字符串s是否是回文串
 int isPalindrome(char s[])
 {
     int len = strlen(s);
@@ -52,4 +51,5 @@ void palindromeTests()
 int main()
 {
     palindromeTests();
+    return 0;
 }

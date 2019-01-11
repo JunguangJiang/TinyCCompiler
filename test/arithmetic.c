@@ -1,107 +1,106 @@
-//四则运算测试程序
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
+//#include <string.h>
+//#include <stdio.h>
+//#include <stdlib.h>
+//#include <ctype.h>
+int printf(const char *format,...);
+void exit(int status);
 
-///运算符优先等级[栈顶][当前]
 char pri[7][7]={
-    /*			当前运算符					*/
     /*			+	-	*	/	(	)	\0	*/
-    /*   +  */	'>','>','<','<','<','>','>',
-    /*栈 -  */	'>','>','<','<','<','>','>',
-    /*顶 *  */	'>','>','>','>','<','>','>',
-    /*运 /  */	'>','>','>','>','<','>','>',
-    /*算 (  */	'<','<','<','<','<','=',' ',
-    /*符 )  */	' ',' ',' ',' ',' ',' ',' ',
-    /*   \0 */	'<','<','<','<','<',' ','='
+    /*  +  */	{'>','>','<','<','<','>','>'},
+    /* -  */	{'>','>','<','<','<','>','>'},
+    /* *  */	{'>','>','>','>','<','>','>'},
+    /* /  */	{'>','>','>','>','<','>','>'},
+    /* (  */	{'<','<','<','<','<','=',' '},
+    /* )  */	{' ',' ',' ',' ',' ',' ',' '},
+    /*  \0 */	{'<','<','<','<','<',' ','='}
 };
 
-///运算符和编号之间的对应关系
-//进一步改进：改成switch语句
 int optr2rank(char op)
 {
+    int ans = 0;
 	if (op == '+'){
-		return 0;
+		ans = 0;
 	} else if (op == '-'){
-		return 1;
+		ans = 1;
 	} else if (op == '*'){
-		return 2;
+		ans = 2;
 	} else if (op == '/'){
-		return 3;
+		ans = 3;
 	} else if (op == '('){
-		return 4;
+		ans = 4;
 	} else if (op == ')'){
-		return 5;
+		ans = 5;
 	} else if (op == '\0'){
-		return 6;
+		ans = 6;
 	} else {
+	    printf("optr2rank error: %c", op);
 		exit(-1);
 	}
+	return ans;
 }
 
-///比较两个运算符之间的优先级
 char orderBetween(char op1, char op2)
 {
 	return pri[optr2rank(op1)][optr2rank(op2)];
 }
 
-///计算opnd1 op opnd2的结果
-///opnd1: 操作数1
-///op: 运算符
-///opnd2: 操作数2
 int calcu(int opnd1, char op, int opnd2)
 {
+    int ans = 0;
 	if (op == '+') {
-		return opnd1 + opnd2;
+		ans = opnd1 + opnd2;
 	} else if (op == '-') {
-		return opnd1 - opnd2;
+		ans = opnd1 - opnd2;
 	} else if (op == '*') {
-		return opnd1 * opnd2;
+		ans = opnd1 * opnd2;
 	} else if (op == '/') {
-		return opnd1 / opnd2;
+		ans = opnd1 / opnd2;
 	} else {
 		exit(-2);
 	}
+	return ans;
 }
 
-///对表达式求值
-///assert:表达式必须是合法的四则运算表达式，对于非法的表达式没有异常处理
-//为方便编译程序的编写，暂时按照整数类型进行计算
-//后续可以改成返回float的结果
+bool isdigit(char c){
+    int i = c - '0';
+    return (i >= 0) && (i <= 9);
+}
+
 int evaluate(char S[])
 {
-	int opnd[10000]; //运算数栈
-	int opnd_top = -1; //运算数栈顶
-	char optr[10000]; //运算符栈
-	int optr_top = -1; //运算符栈顶
+	int opnd[10000];
+	int opnd_top = -1;
+	char optr[10000];
+	int optr_top = -1;
 
-	int i=0; //当前正在扫描字符串S中的位置
+	int i=0;
 
-	optr[++optr_top] = '\0'; //尾哨兵'\0'也作为头哨兵首先入栈
-	while (optr_top >= 0) { //在运算符栈非空之前，逐个处理表达式中各字符
-		if (isdigit(S[i])) { //若当前字符为操作数，则将起始于S[i]的子串解析为数值，并存入操作数栈
-			opnd[++opnd_top] = S[i] - '0'; //Note:转成float时，此处需要修改!
+	optr[++optr_top] = '\0';
+
+	while (optr_top >= 0) {
+		if (isdigit(S[i])) {
+			opnd[++opnd_top] = S[i] - '0';
 			while(isdigit(S[++i])){
 				opnd[opnd_top] = opnd[opnd_top] * 10 + S[i] - '0';
 			}
-		} else { //若当前字符为运算符，则
-			char order = orderBetween(optr[optr_top], S[i]); //视其与栈顶运算符之间的优先级高低分别处理
-			if (order == '<') { //栈顶运算符优先级更低时，
-				optr[++optr_top] = S[i++]; //计算推迟，当前运算符进栈
-			} else if (order == '=') { //优先级相等（当前运算符为右括号或者尾部哨兵'\0'时，
-				optr_top--; //脱括号
-				i++; //接收下一个字符
-			} else if (order == '>') { //栈顶运算符优先级更高时，可实施相应的计算，并将结果重新入栈
+		} else {
+			char order = orderBetween(optr[optr_top], S[i]);
+			if (order == '<') {
+				optr[++optr_top] = S[i++];
+			} else if (order == '=') {
+				optr_top--;
+				i++;
+			} else if (order == '>') {
 				char op = optr[optr_top--];
-				int pOpnd2 = opnd[opnd_top--], pOpnd1 = opnd[opnd_top--]; //取出后、前操作数
+				int pOpnd2 = opnd[opnd_top--], pOpnd1 = opnd[opnd_top--];
 				opnd[++opnd_top] = calcu(pOpnd1, op, pOpnd2);
-			} else { //逢语法错误，不做处理直接退出
+			} else {
 				exit(-1);
 			}
 		}
 	}
-	return opnd[opnd_top]; //返回最终的计算结果
+	return opnd[opnd_top];
 }
 
 void testEvaluate(char S[], int true_answer)
@@ -135,4 +134,5 @@ void evaluateTests()
 int main()
 {
 	evaluateTests();
+    return 0;
 }

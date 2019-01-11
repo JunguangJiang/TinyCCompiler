@@ -17,26 +17,12 @@ class TinyCGenerator(CVisitor):
         self.continue_block = None  # 当调用continue时应该跳转到的语句块
         self.break_block = None  # 当调用break时应该跳转到的语句块
         self.switch_context = None  # TODO
-        self.emit_printf()  # 引入printf函数
-        self.emit_exit()  # 引入exit函数
         self.current_base_type = None  #当前上下文的基础数据类型
         self.is_global = True  #当前是否处于全局环境中
         self.error_listener = error_listener  #错误监听器
         self.global_context = ir.global_context
         self.struct_reflection = {}
         self.is_defining_struct = ''
-
-    def emit_printf(self):
-        """引入printf函数"""
-        printf_type = ir.FunctionType(TinyCTypes.int, (ir.PointerType(TinyCTypes.char),), var_arg=True)
-        printf_func = ir.Function(self.module, printf_type, "printf")
-        self.symbol_table["printf"] = printf_func
-
-    def emit_exit(self):
-        """引入exit函数"""
-        exit_type = ir.FunctionType(TinyCTypes.void, (TinyCTypes.int, ), var_arg=False)
-        exit_func = ir.Function(self.module, exit_type, "exit")
-        self.symbol_table["exit"] = exit_func
 
     def visitDeclaration(self, ctx:CParser.DeclarationContext):
         """
@@ -245,6 +231,7 @@ class TinyCGenerator(CVisitor):
                     raise SemanticError(ctx=ctx, msg="Struct " + ctx.Identifier().getText() + " Undefined")
             else:
                 raise NotImplementedError("Union is not supported yet.")
+
     def visitParameterList(self, ctx:CParser.ParameterListContext):
         """
         parameterList
@@ -263,6 +250,20 @@ class TinyCGenerator(CVisitor):
         arg_names.append(arg_name)
         arg_types.append(arg_type)
         return arg_names, arg_types
+
+    def visitParameterTypeList(self, ctx:CParser.ParameterTypeListContext):
+        """
+        parameterTypeList
+            :   parameterList
+            |   parameterList ',' '...'
+            ;
+        :param ctx:
+        :return: 参数列表,var_arg(是否变长）
+        """
+        if len(ctx.children) == 3:  #变长参数
+            return self.visit(ctx.parameterList()), True
+        else:
+            return self.visit(ctx.parameterList()), False
 
     def visitParameterDeclaration(self, ctx:CParser.ParameterDeclarationContext):
         """
@@ -312,8 +313,8 @@ class TinyCGenerator(CVisitor):
             elif ctx.children[1].getText() == '(':
                 if match_rule(ctx.children[2], CParser.RULE_parameterTypeList):
                     # directDeclarator '(' parameterTypeList ')'
-                    arg_names, arg_types = self.visit(ctx.parameterTypeList())  # 获得函数参数的名字列表和类型列表
-                    new_type = ir.FunctionType(old_type, arg_types)
+                    (arg_names, arg_types), var_arg = self.visit(ctx.parameterTypeList())  # 获得函数参数的名字列表和类型列表
+                    new_type = ir.FunctionType(old_type, arg_types, var_arg=var_arg)
                     return name, new_type, arg_names
                 elif match_rule(ctx.children[2], CParser.RULE_identifierList):
                     # TODO directDeclarator '(' identifierList ')' 不知道这个是对应什么C语法
@@ -343,103 +344,70 @@ class TinyCGenerator(CVisitor):
             lhs, lhs_ptr = self.visit(ctx.unaryExpression())
             op = self.visit(ctx.assignmentOperator())
             rhs, _ = self.visit(ctx.assignmentExpression())
-            # TODO 3完善赋值运算符
             if op == '=':
                 converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=lhs_ptr.type.pointee, ctx=ctx)
                 self.builder.store(converted_rhs, lhs_ptr)
                 return converted_rhs, None
-            elif op == '+=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.add(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    new_value = self.builder.fadd(lhs, converted_rhs)
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
-            elif op == '-=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.sub(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    new_value = self.builder.fsub(lhs, converted_rhs)
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
-            elif op == '*=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.mul(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    new_value = self.builder.fmul(lhs, converted_rhs)
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
-            elif op == '/=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.sdiv(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    new_value = self.builder.fdiv(lhs, converted_rhs)
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
-            elif op == '%=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.srem(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
-            elif op == '<<=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.shl(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
-            elif op == '>>=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.ashr(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
-            elif op == '|=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.or_(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
-            elif op == '&=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.and_(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
-            elif op == '^=':
-                target_type = lhs_ptr.type.pointee
-                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
-                if TinyCTypes.is_int(target_type):
-                    new_value = self.builder.xor(lhs, converted_rhs)
-                elif TinyCTypes.is_float(target_type):
-                    raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
-                self.builder.store(new_value, lhs_ptr)
-                return new_value, None
             else:
-                raise NotImplementedError("visitAssignmentExpression")
+                target_type = lhs_ptr.type.pointee
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=target_type, ctx=ctx)
+                if op == '+=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.add(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        new_value = self.builder.fadd(lhs, converted_rhs)
+                elif op == '-=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.sub(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        new_value = self.builder.fsub(lhs, converted_rhs)
+                elif op == '*=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.mul(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        new_value = self.builder.fmul(lhs, converted_rhs)
+                elif op == '/=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.sdiv(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        new_value = self.builder.fdiv(lhs, converted_rhs)
+                elif op == '%=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.srem(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                elif op == '<<=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.shl(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                elif op == '<<=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.shl(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                elif op == '>>=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.ashr(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                elif op == '|=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.or_(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                elif op == '&=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.and_(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                elif op == '^=':
+                    if TinyCTypes.is_int(target_type):
+                        new_value = self.builder.xor(lhs, converted_rhs)
+                    elif TinyCTypes.is_float(target_type):
+                        raise SemanticError(ctx=ctx, msg="Float doesn't support % operation")
+                self.builder.store(new_value, lhs_ptr)
+                return new_value, None
 
     def visitAssignmentOperator(self, ctx:CParser.AssignmentOperatorContext):
         """

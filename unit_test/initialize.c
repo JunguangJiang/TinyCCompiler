@@ -1,3 +1,5 @@
+int printf(const char *format,...);
+
 // Test
 int main()
 {
@@ -9,5 +11,8 @@ int main()
     printf("j=%d\n", j);
     int k = 5;
     printf("k=%d\n", k);
+    char s[5] = "5\t6\n";
+    s[2] = 33;
+    printf("%s", s);
     return 0;
 }

@@ -1,3 +1,5 @@
+int printf(const char *format,...);
+
 int i=0;
 void scope_test_1()
 {

@@ -1,3 +1,5 @@
+int printf(const char *format,...);
+
 int nullptr = 0;
 struct Node
 {

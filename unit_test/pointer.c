@@ -1,3 +1,4 @@
+int printf(const char *format,...);
 
 void mul(int* i_ptr, int *j_ptr)
 {
@@ -51,6 +52,10 @@ int main()
     float* f_ptr = &f;
     *f_ptr = 7;
     printf("f=%f\n", f);
+
+    //TEST 8
+    int ** a_ptr_ptr = &a_ptr;
+    printf("a[1] is %d\n", **a_ptr_ptr);
 
     return 0;
 }

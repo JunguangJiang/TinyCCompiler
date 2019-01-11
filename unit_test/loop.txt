@@ -1,4 +1,6 @@
 for test 1: sum=39
 for test 2:100,103,106,109,112,115,118,121,break!
+j=27
 while test 1:1,3,9,27,
 while test 2:result=22400
+k break,k break,k break,k break,j break,k break,j break,k break,j break,k break,j break,i break

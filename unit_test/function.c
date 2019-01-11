@@ -1,3 +1,5 @@
+int printf(const char *format,...);
+
 int abs(int x);
 
 // test visitFunctionDefinition

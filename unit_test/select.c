@@ -1,3 +1,5 @@
+int printf(const char *format,...);
+
 int switch_func(int a) {
 	int b;
 	switch (a) {

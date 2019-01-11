@@ -1,7 +1,7 @@
 # 所有测试文件的名字
 _cases = [
-    "palindrome_en.c",
-    "arithmetic_en.c",
+    "palindrome.c",
+    "arithmetic.c",
     "KMP.c",
     "linkedlist.c"
 ]

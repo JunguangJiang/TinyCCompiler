@@ -1,3 +1,5 @@
+int printf(const char *format,...);
+
 void for_test_1()
 {
     int data[6]={4,5,6,7,8,9};
@@ -19,6 +21,17 @@ void for_test_2()
         }
     }
     printf("\n");
+}
+
+void for_test_3()
+{
+    for(int i=0, j=1; i<3; i++){
+        j *= 3;
+        if(i==2){
+            printf("j=%d\n",j);
+            break;
+        }
+    }
 }
 
 void while_test_1()
@@ -50,12 +63,39 @@ void while_test_2()
     printf("result=%d\n", result);
 }
 
+void triple_break()
+{
+    int i=0,j=0,k=0;
+    while(1){
+        i++;
+        while(1){
+            j++;
+            while(1){
+                k++;
+                if(k>3){
+                    printf("k break,");
+                    break;
+                }
+            }
+            if(j>3){
+                printf("j break,");
+                break;
+            }
+        }
+        if(i>3){
+            printf("i break");
+            break;
+        }
+    }
+}
 
 int main()
 {
     for_test_1();
     for_test_2();
+    for_test_3();
     while_test_1();
     while_test_2();
+    triple_break();
     return 0;
 }

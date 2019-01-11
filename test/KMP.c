@@ -1,5 +1,6 @@
 //KMP TEST
-#include <stdio.h>
+//#include <stdio.h>
+int printf(const char *format,...);
 
 int strlen(char s[])
 {

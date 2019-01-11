@@ -1,4 +1,5 @@
-#include <stdio.h>
+int printf(const char *format,...);
+
 int main(){
     int a = 4;
     while(a++<7)
