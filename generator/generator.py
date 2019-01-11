@@ -1287,6 +1287,3 @@ def generate(input_filename, output_filename):
     else:
         error_listener.print_errors()
         return False
-
-
-

@@ -3,9 +3,9 @@ _cases = [
     "palindrome.c",
     "arithmetic.c",
     "KMP.c",
-    "linkedlist.c"
+    "linkedlist.c",
+    "AVLTree.c"
 ]
-
 
 def cases():
     return ["test/"+case for case in _cases]
