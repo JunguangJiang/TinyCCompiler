@@ -6,8 +6,9 @@ _cases = [
     "loop.c",  # 循环测试
     "select.c",  # 选择分支测试
     "scope.c",  # 作用域测试
+    "struct.c",  # 结构体和指针相关测试
+    "linkedlist.c"  # 链表测试
 ]
-
 
 def cases():
     return ["unit_test/"+case for case in _cases]

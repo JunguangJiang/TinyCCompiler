@@ -5,7 +5,7 @@ import test.testcase
 import unit_test.testcase
 import os
 import filecmp
-
+import traceback
 
 def test_file(filename, print_exception=True):
     """
@@ -22,10 +22,12 @@ def test_file(filename, print_exception=True):
         try:
             generate_result = generate(input_filename=filename, output_filename=output_filename)
         except Exception:
+            traceback.print_exc()
             print("generate", filename, "failed.")
             return False
 
     if not generate_result:
+        traceback.print_exc()
         print("generate", filename, "failed.")
         return False
     else:
@@ -36,6 +38,7 @@ def test_file(filename, print_exception=True):
                 execute_result = execute(output_filename)
             except Exception as e:
                 print("execute", output_filename, "failed.")
+                traceback.print_exc()
                 return False
 
         return True
@@ -90,5 +93,4 @@ if __name__ == '__main__':
             test_file(filename=sys.argv[1], print_exception=True)
     else:  # 运行测试文件
         test_files(filenames=test.testcase.cases(), print_exception=False, is_unit=False)
-
 

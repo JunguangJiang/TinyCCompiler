@@ -22,6 +22,9 @@ class TinyCGenerator(CVisitor):
         self.current_base_type = None  #当前上下文的基础数据类型
         self.is_global = True  #当前是否处于全局环境中
         self.error_listener = error_listener  #错误监听器
+        self.global_context = ir.global_context
+        self.struct_reflection = {}
+        self.is_defining_struct = ''
 
     def emit_printf(self):
         """引入printf函数"""
@@ -90,6 +93,16 @@ class TinyCGenerator(CVisitor):
         self.symbol_table.exit_scope()
         self.is_global = True
 
+    def visitTypedefName(self, ctx:CParser.TypedefNameContext):
+        """
+            typedefName
+        :   Identifier
+        ;
+        :param ctx:
+        :return:
+        """
+        return ctx.getText()
+
     def visitTypeSpecifier(self, ctx:CParser.TypeSpecifierContext):
         """
         typeSpecifier
@@ -115,10 +128,123 @@ class TinyCGenerator(CVisitor):
             return TinyCTypes.str2type[ctx.getText()]
         elif match_rule(ctx.children[0], CParser.RULE_typedefName):  # typedefName
             return self.visit(ctx.typedefName())
+        elif match_rule(ctx.children[0], CParser.RULE_structOrUnionSpecifier):
+            return self.visit(ctx.structOrUnionSpecifier())
         else:
-            # TODO 14,15
             raise NotImplementedError("visitTypeSpecifier")
 
+    def visitStructOrUnion(self, ctx:CParser.StructOrUnionContext):
+        """
+        structOrUnion
+            :   'struct'
+            | 'union'
+        :param ctx:
+        :return: 'struct' or 'union'
+        """
+        return ctx.getText()
+
+    def visitSpecifierQualifierList(self, ctx:CParser.SpecifierQualifierListContext):
+        """
+            specifierQualifierList
+        :   typeSpecifier specifierQualifierList?
+        |   typeQualifier specifierQualifierList?
+        ;
+        :param ctx:
+        :return:
+        """
+        if ctx.typeQualifier():
+            raise NotImplementedError("Not support typeQualifier yet,")
+        if len(ctx.children) == 1:
+            return self.visit(ctx.children[0])
+        else:
+            sub_dict = {'type': self.visit(ctx.children[0]),
+                        'name': self.visit(ctx.children[1])}
+            return sub_dict
+
+    def visitStructDeclaration(self, ctx:CParser.StructDeclarationContext):
+        """
+            structDeclaration
+        :   specifierQualifierList structDeclaratorList? ';'
+        |   staticAssertDeclaration
+        ;
+        :param ctx:
+        :return: a tuple of reflection between name and index
+        """
+        # 只支持第一种不带structDeclaratorList的格式
+        if ctx.staticAssertDeclaration() or ctx.structDeclaratorList():
+            raise NotImplementedError("Not support complex struct declaration.")
+        return self.visit(ctx.specifierQualifierList())
+
+
+    def visitStructDeclarationList(self, ctx:CParser.StructDeclarationListContext):
+        """
+            structDeclarationList
+        :   structDeclaration
+        |   structDeclarationList structDeclaration
+        ;
+        :param ctx:
+        :return: a list contains the element's type(value) and element's name(key)
+        """
+        if len(ctx.children) == 2:
+            sub_list = self.visit(ctx.structDeclarationList())
+            sub_dict = self.visit(ctx.structDeclaration())
+            sub_list.append(sub_dict)
+            return sub_list
+        else:
+            sub_dict = self.visit(ctx.structDeclaration())
+            return [sub_dict]
+
+    def visitStructOrUnionSpecifier(self, ctx:CParser.StructOrUnionSpecifierContext):
+        """
+        structOrUnionSpecifier
+            :   structOrUnion Identifier? '{' structDeclarationList '}'
+            | structOrUnion Identifier
+            ;
+        :param ctx:
+        :return: LLVM struct type
+        """
+        if len(ctx.children) >= 4:  # 结构本身的声明/定义
+            s_or_u = self.visit(ctx.structOrUnion())
+            if s_or_u == 'struct':  # 结构
+                if(len(ctx.children) == 5):  # 非匿名结构
+                    if ctx.Identifier().getText() in self.struct_reflection.keys():
+                        # 重定义
+                        raise SemanticError(ctx=ctx, msg="Struct" + ctx.Identifier().getText() + "Redefinition")
+                    else:
+                        struct_name = ctx.Identifier().getText()
+                        self.is_defining_struct = struct_name
+                        tmp_list = self.visit(ctx.structDeclarationList())
+                        self.struct_reflection[struct_name] = {}
+                        index = 0
+                        ele_list = []
+                        for ele in tmp_list:
+                            self.struct_reflection[struct_name][ele['name']] = {
+                                'type': ele['type'],
+                                'index': index
+                            }
+                            ele_list.append(ele['type'])
+                            index = index + 1
+                        new_struct = self.global_context.get_identified_type(name=struct_name)
+                        new_struct.set_body(*ele_list)
+                        self.is_defining_struct = ''
+                        return new_struct
+                else:
+                    raise NotImplementedError("Anonymous struct is not supported yet.")
+            else:
+                raise NotImplementedError("Union is not supported yet.")
+        else:  # 结构实体的定义
+            s_or_u = self.visit(ctx.structOrUnion())
+            if s_or_u == 'struct':  # 结构
+                struct_name = ctx.Identifier().getText()
+                if (ctx.Identifier().getText() in self.struct_reflection.keys()) or self.is_defining_struct == struct_name:
+                    # 已有定义或者正在定义该结构
+                    new_struct = self.global_context.get_identified_type(name=struct_name)
+                    return new_struct
+                else:
+                    # 未定义结构
+                    raise SemanticError(ctx=ctx, msg="Struct " + ctx.Identifier().getText() + " Undefined")
+            else:
+                raise NotImplementedError("Union is not supported yet.")
     def visitParameterList(self, ctx:CParser.ParameterListContext):
         """
         parameterList
@@ -410,11 +536,21 @@ class TinyCGenerator(CVisitor):
                 zero = ir.Constant(rhs.type, 0)
                 res = self.builder.sub(zero, rhs)
                 return res, None
+            elif op == '!':
+                origin = TinyCTypes.cast_type(self.builder, TinyCTypes.int, rhs, ctx)
+                zero = TinyCTypes.int(0)
+                res = self.builder.icmp_signed("==", zero, origin)
+                res = self.builder.zext(res, TinyCTypes.int)
+                return res, None
+            elif op == '~':
+                if TinyCTypes.is_int(rhs.type):
+                    res = self.builder.not_(rhs)
+                    return res, None
+                else:
+                    raise SemanticError(ctx=ctx, msg="Wrong type argument to bit-complement.")
             else:
-                # TODO 12 完善一元运算表达式
-                raise NotImplementedError("! and ~ not finished")
+                raise SemanticError(ctx=ctx, msg="Should not reach here.")
         else:
-            # TODO 12 完善一元运算表达式
             raise NotImplementedError("visitUnaryExpression not finished yet.")
 
     def visitCastExpression(self, ctx:CParser.CastExpressionContext):
@@ -486,9 +622,27 @@ class TinyCGenerator(CVisitor):
                     res = self.builder.sub(lhs, one)
                 self.builder.store(res, lhs_ptr)
                 return lhs, lhs_ptr
+            elif op == '.':
+                ele_name = ctx.Identifier().getText()
+                target_name = lhs_ptr.type.pointee.name
+                array_index = self.struct_reflection[target_name][ele_name]['index']
+                array_index = ir.Constant(TinyCTypes.int, array_index)
+                zero = ir.Constant(TinyCTypes.int, 0)
+                array_indices = [zero, array_index]
+                ptr = self.builder.gep(lhs_ptr, array_indices)
+                return self.builder.load(ptr), ptr
             else:
-                # TODO 实现结构体时需要实现.和->
-                raise NotImplementedError(". -> not finished yet.")
+                # ->
+                ele_name = ctx.Identifier().getText()
+                target_name = lhs.type.pointee.name
+                if type(lhs.type.pointee) != ir.IdentifiedStructType:
+                    raise SemanticError(ctx=ctx, msg="Illegal operation on -> operator.")
+                array_index = self.struct_reflection[target_name][ele_name]['index']
+                array_index = ir.Constant(TinyCTypes.int, array_index)
+                zero = ir.Constant(TinyCTypes.int, 0)
+                array_indices = [zero, array_index]
+                ptr = self.builder.gep(lhs, array_indices)
+                return self.builder.load(ptr), ptr
         raise NotImplementedError("visitPostfixExpression not finished yet")
 
     def visitPrimaryExpression(self, ctx:CParser.PrimaryExpressionContext):
@@ -511,7 +665,7 @@ class TinyCGenerator(CVisitor):
                     if type(var) in [ir.Argument, ir.Function]:
                         var_val = var
                     else:
-                        if isinstance(var.type.pointee, ir.ArrayType):
+                        if isinstance(var.type.pointee, ir.ArrayType) or isinstance(var.type.pointee, ir.IdentifiedStructType):
                             zero = ir.Constant(TinyCTypes.int, 0)
                             var_val = self.builder.gep(var, [zero, zero])
                         else:
@@ -641,7 +795,6 @@ class TinyCGenerator(CVisitor):
             return declarator
         else:
             var_name, var_type = declarator
-
             if len(ctx.children) == 3:
                 init_val = self.visit(ctx.initializer())
                 if isinstance(init_val, list):  # 如果初始值是一个列表
@@ -709,6 +862,7 @@ class TinyCGenerator(CVisitor):
         """
         self.symbol_table.enter_scope()
         name_prefix = self.builder.block.name
+        do_block = self.builder.append_basic_block(name=name_prefix + "loop_do")  # do语句块，先跑一遍
         cond_block = self.builder.append_basic_block(name=name_prefix+".loop_cond")  # 条件判断语句块，例如i<3
         loop_block = self.builder.append_basic_block(name=name_prefix+".loop_body")  # 循环语句块
         end_block = self.builder.append_basic_block(name=name_prefix+".loop_end")  # 循环结束后的语句块
@@ -726,10 +880,14 @@ class TinyCGenerator(CVisitor):
             cond_expression = ctx.expression()
         elif iteration_type == "for":  # for循环
             cond_expression, update_expression = self.visit(ctx.forCondition())
-        else:  # do-while循环
-            # TODO 11 do-while循环
-            raise NotImplementedError("do while")
-
+        elif iteration_type == "do":  # do while
+            cond_expression = ctx.expression()
+        else:
+            raise SemanticError(ctx=ctx, msg="Cannot recognize loop form!")
+        self.builder.branch(do_block)
+        self.builder.position_at_start(do_block)
+        if iteration_type == "do":
+            self.visit(ctx.statement())
         self.builder.branch(cond_block)
         self.builder.position_at_start(cond_block)
         if cond_expression:
@@ -936,7 +1094,12 @@ class TinyCGenerator(CVisitor):
             lhs, _ = self.visit(ctx.children[0])
             op = ctx.children[1].getText()
             converted_target = lhs.type
-            converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
+            if type(lhs.type) == ir.PointerType and type(rhs.type) == ir.IntType:
+                converted_target = TinyCTypes.int
+                converted_rhs = rhs
+                lhs = TinyCTypes.cast_type(self.builder, value=lhs, target_type=TinyCTypes.int, ctx=ctx)
+            else:
+                converted_rhs = TinyCTypes.cast_type(self.builder, value=rhs, target_type=converted_target, ctx=ctx)
             if TinyCTypes.is_int(converted_target):
                 return self.builder.icmp_signed(cmpop=op, lhs=lhs, rhs=converted_rhs), None
             elif TinyCTypes.is_float(converted_target):
