@@ -75,6 +75,7 @@ int main()
     S->i=3;
     S->f=4.4;
     printf("S->i=%d,S->f=%e\n", S->i, S->f);
-
+    free(S);
+    
     return 0;
 }
