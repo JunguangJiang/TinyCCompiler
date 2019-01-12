@@ -7,7 +7,6 @@ _cases = [
     "select.c",  # 选择分支测试
     "scope.c",  # 作用域测试
     "struct.c",  # 结构体和指针相关测试
-    "linkedlist.c",  # 链表测试
     "array.c", #数组测试
 ]
 
