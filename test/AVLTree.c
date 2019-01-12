@@ -3,6 +3,8 @@ int LH = 0;
 int EH = 1;
 int RH = 2;
 int printf(const char *format,...);
+void *malloc(unsigned int num_bytes);
+void free(void *ptr);
 
 struct AVLNode
 {
@@ -12,38 +14,24 @@ struct AVLNode
 	struct AVLNode* rchild;
 };
 
-struct AVLNode node_set[100];
-int node_used[100];
-
-void Init()
+struct AVLNode* MallocNode(int e)
 {
-    for(int i = 0; i < 100; i++)
-    {
-        node_set[i].m_data = 0;
-        node_set[i].bf = EH;
-        node_set[i].lchild = nullptr;
-        node_set[i].rchild = nullptr;
-        node_used[i] = 0;
-    }
+    struct AVLNode* new_node = malloc(24);  // length of pointer is 8 bytes in 64 bit machine
+    new_node->m_data = e;
+    new_node->bf = EH;
+    new_node->lchild = nullptr;
+    new_node->rchild = nullptr;
+    return new_node;
 }
 
-struct AVLNode* AllocNode(int e)
+void FreeTree(struct AVLNode** root)
 {
-    struct AVLNode* res = nullptr;
-    for(int i = 0; i < 100; i++)
-    {
-        if(node_used[i] == 0)
-        {
-            node_used[i] = 1;
-            node_set[i].m_data = e;
-            node_set[i].bf = EH;
-            node_set[i].lchild = nullptr;
-            node_set[i].rchild = nullptr;
-            res = &node_set[i];
-            break;
-        }
-    }
-    return res;
+    if(*root == nullptr)
+        return;
+    FreeTree(&((*root)->lchild));
+    FreeTree(&((*root)->rchild));
+    free(*root);
+    *root = nullptr;
 }
 
 void R_Rotate(struct AVLNode ** p)
@@ -136,7 +124,7 @@ int Insert(struct AVLNode ** root, int e, int* taller)
 {
 	if (*root == nullptr)
 	{
-		*root = AllocNode(e);
+		*root = MallocNode(e);
 		*taller = 1;
 	}
 	else
@@ -214,7 +202,7 @@ void PrintTree(struct AVLNode* root)
 {
     if(root == nullptr)
     {
-        printf("Empty Tree!\n");
+        printf("Empty Tree!");
         return;
     }
     printf("{");
@@ -235,10 +223,14 @@ void PrintTree(struct AVLNode* root)
 
 int main()
 {
-    Init();
-    struct AVLNode* root = AllocNode(0);
+    printf("\nAVLTree test:\n");
+    struct AVLNode* root = nullptr;
     int taller;
 
+    PrintTree(root);
+    printf("\n");
+
+    Insert(&root, 0, &taller);
     PrintTree(root);
     printf("\n");
 
@@ -261,5 +253,9 @@ int main()
     Insert(&root, -25, &taller);
     PrintTree(root);
     printf("\n");
+
+    FreeTree(&root);
+    PrintTree(root);
+
     return 0;
 }

@@ -11,7 +11,7 @@ int func1()
 
 void func2(short i)
 {
-    printf("func2 called with i=%d.\n", i);
+    printf("func2 called with i=%hd.\n", i);
 }
 
 void func3(char s[])

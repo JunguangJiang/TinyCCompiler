@@ -37,7 +37,7 @@ void testPalindrome(char s[], int true_answer)
 
 void palindromeTests()
 {
-    printf("palindromeTests:\n");
+    printf("\npalindrome test:\n");
     testPalindrome("", 1);
     testPalindrome("1", 1);
     testPalindrome("22", 1);

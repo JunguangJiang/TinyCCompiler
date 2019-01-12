@@ -105,6 +105,7 @@ class TinyCGenerator(CVisitor):
         :param ctx:
         :return:
         """
+        #raise SemanticError(ctx=ctx, msg="HTXTEST")
         return ctx.getText()
 
     def visitTypeSpecifier(self, ctx:CParser.TypeSpecifierContext):

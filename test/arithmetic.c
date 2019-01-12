@@ -120,7 +120,7 @@ void testEvaluate(char S[], int true_answer)
 
 void evaluateTests()
 {
-	printf("evaluateTests:\n");
+	printf("\nevaluate test:\n");
 	testEvaluate("3", 3);
 	testEvaluate("23+5", 28);
 	testEvaluate("3*4", 12);

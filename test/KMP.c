@@ -72,7 +72,7 @@ int main()
     int next[32];
 
 
-	printf("================ KMP ==============\n");
+	printf("\nKMP test:\n");
 	get_next(t, next);
 	print_next(next, strlen(t));
 

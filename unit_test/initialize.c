@@ -7,8 +7,8 @@ int main()
     printf("i=%f\n", i);
     double i2 = 4.444;
     printf("i2=%f\n",i2);
-    char j = 4;
-    printf("j=%d\n", j);
+    char j = 49;
+    printf("j=%c\n", j);
     int k = 5;
     printf("k=%d\n", k);
     char s[5] = "5\t6\n";
