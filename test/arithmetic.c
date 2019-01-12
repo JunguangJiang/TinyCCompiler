@@ -19,25 +19,34 @@ char pri[7][7]={
 int optr2rank(char op)
 {
     int ans = 0;
-	if (op == '+'){
-		ans = 0;
-	} else if (op == '-'){
-		ans = 1;
-	} else if (op == '*'){
-		ans = 2;
-	} else if (op == '/'){
-		ans = 3;
-	} else if (op == '('){
-		ans = 4;
-	} else if (op == ')'){
-		ans = 5;
-	} else if (op == '\0'){
-		ans = 6;
-	} else {
-	    printf("optr2rank error: %c", op);
-		exit(-1);
-	}
-	return ans;
+    switch(op){
+        case '+':
+            ans = 0;
+            break;
+        case '-':
+            ans = 1;
+            break;
+        case '*':
+            ans = 2;
+            break;
+        case '/':
+            ans = 3;
+            break;
+        case '(':
+            ans = 4;
+            break;
+        case ')':
+            ans = 5;
+            break;
+        case '\0':
+            ans = 6;
+            break;
+        default:
+            printf("optr2rank error: %c", op);
+		    exit(-1);
+		    break;
+    }
+    return ans;
 }
 
 char orderBetween(char op1, char op2)

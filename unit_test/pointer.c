@@ -63,7 +63,7 @@ int main()
     double *malloc_ptr=0;
     malloc_ptr = malloc(8);
     *malloc_ptr = 3.0;
-    printf("*malloc_ptr=%e\n", *malloc_ptr);
+    printf("*malloc_ptr=%0.2f\n", *malloc_ptr);
     free(malloc_ptr);
 
     //TEST 10
@@ -74,7 +74,7 @@ int main()
     struct my_struct* S=malloc(12);
     S->i=3;
     S->f=4.4;
-    printf("S->i=%d,S->f=%e\n", S->i, S->f);
+    printf("S->i=%d,S->f=%0.2f\n", S->i, S->f);
     free(S);
     
     return 0;

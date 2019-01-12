@@ -9,6 +9,7 @@ _cases = [
     "struct.c",  # 结构体和指针相关测试
     "linkedlist.c",  # 链表测试
     "array.c", #数组测试
+    "unaryop.c", #一元运算符测试
 ]
 
 def cases():
