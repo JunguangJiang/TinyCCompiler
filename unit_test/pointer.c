@@ -1,4 +1,6 @@
 int printf(const char *format,...);
+void *malloc(unsigned int num_bytes);
+void free(void *ptr);
 
 void mul(int* i_ptr, int *j_ptr)
 {
@@ -56,6 +58,23 @@ int main()
     //TEST 8
     int ** a_ptr_ptr = &a_ptr;
     printf("a[1] is %d\n", **a_ptr_ptr);
+
+    //TEST 9
+    double *malloc_ptr=0;
+    malloc_ptr = malloc(8);
+    *malloc_ptr = 3.0;
+    printf("*malloc_ptr=%e\n", *malloc_ptr);
+    free(malloc_ptr);
+
+    //TEST 10
+    struct my_struct{
+        int i;
+        double f;
+    };
+    struct my_struct* S=malloc(12);
+    S->i=3;
+    S->f=4.4;
+    printf("S->i=%d,S->f=%e\n", S->i, S->f);
 
     return 0;
 }

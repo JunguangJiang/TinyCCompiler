@@ -127,4 +127,6 @@ class TinyCTypes(object):
         elif isinstance(value.type, ir.ArrayType) and isinstance(target_type, ir.ArrayType) \
                 and value.type.element == target_type.element:
             return builder.bitcast(value, target_type)
+        elif isinstance(value.type, ir.PointerType) and isinstance(target_type, ir.PointerType):  # 指针之间的类型转换
+            return builder.bitcast(value, target_type)
         raise SemanticError(ctx=ctx, msg="No known conversion from '%s' to '%s'" % (value.type, target_type))

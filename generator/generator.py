@@ -28,6 +28,17 @@ class TinyCGenerator(CVisitor):
     ARRAY_TYPE=1
     FUNCTION_TYPE=2
 
+    def visitDeclarationSpecifiers(self, ctx:CParser.DeclarationSpecifiersContext):
+        """
+        declarationSpecifiers
+            :   declarationSpecifier+
+            ;
+        此处简化考虑，关键词修饰只考虑最后一个关键字，例如unsigned int和int是等同的
+        :param ctx:
+        :return:
+        """
+        return self.visit(ctx.children[-1])
+
     def visitDeclaration(self, ctx:CParser.DeclarationContext):
         """
         declaration
@@ -104,6 +115,7 @@ class TinyCGenerator(CVisitor):
             |   'short'
             |   'int'
             |   'long'
+            |   'unsigned'
             |   'float'
             |   'double'
             |   structOrUnionSpecifier
@@ -115,10 +127,15 @@ class TinyCGenerator(CVisitor):
         """
         if match_rule(ctx.children[0], CParser.RULE_typeSpecifier):
             # typeSpecifier pointer
-            return ir.PointerType(self.visit(ctx.typeSpecifier()))
+            base_type = self.visit(ctx.typeSpecifier())
+            if base_type == TinyCTypes.void:
+                base_type = TinyCTypes.int
+            return ir.PointerType(base_type)
         elif match_texts(ctx, TinyCTypes.str2type.keys()):
             # void | char | short | int | long | float | double |
             return TinyCTypes.str2type[ctx.getText()]
+        elif match_text(ctx, "unsigned"):  # 自动忽视unsigned
+            return None
         elif match_rule(ctx.children[0], CParser.RULE_typedefName):  # typedefName
             return self.visit(ctx.typedefName())
         elif match_rule(ctx.children[0], CParser.RULE_structOrUnionSpecifier):
@@ -167,7 +184,6 @@ class TinyCGenerator(CVisitor):
         if ctx.staticAssertDeclaration() or ctx.structDeclaratorList():
             raise NotImplementedError("Not support complex struct declaration.")
         return self.visit(ctx.specifierQualifierList())
-
 
     def visitStructDeclarationList(self, ctx:CParser.StructDeclarationListContext):
         """
@@ -309,7 +325,6 @@ class TinyCGenerator(CVisitor):
             |   directDeclarator '[' assignmentExpression? ']'
             |   directDeclarator '(' parameterTypeList ')'
             |   directDeclarator '(' identifierList? ')'
-            |   '(' typeSpecifier? pointer directDeclarator ')' // function pointer like: (__cdecl *f)
             ;
         :param ctx:
         :return: 声明变量的类型，名字name,llvm类型,
@@ -350,8 +365,7 @@ class TinyCGenerator(CVisitor):
                     new_llvm_type = ir.FunctionType(old_llvm_type, arg_types)
                     return self.FUNCTION_TYPE, name, new_llvm_type, arg_names
         else:
-            # TODO '(' typeSpecifier? pointer directDeclarator ')'
-            raise NotImplementedError("'(' typeSpecifier? pointer directDeclarator ')'")
+            raise NotImplementedError("visitDirectDeclarator")
 
     def visitAssignmentExpression(self, ctx:CParser.AssignmentExpressionContext):
         """
